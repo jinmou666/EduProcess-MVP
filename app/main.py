@@ -11,7 +11,6 @@ models.Base.metadata.create_all(bind=database.engine)
 app = FastAPI(title="EduProcess AI Critique API")
 
 # --- 关键：配置 CORS ---
-# 如果不配这个，你的前端浏览器会拦截请求。
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # 允许所有来源，演示期间图省事。生产环境要改。

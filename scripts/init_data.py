@@ -18,7 +18,7 @@ def init_db_data():
         print("Data already exists. Skipping.")
         return
 
-    # --- 你的 5G/OFDM 演示文本 (故意包含错误) ---
+
     # 错误1: "OFDM技术将高速数据流拆分为多个模拟子载波" -> 应该是正交的、数字调制的概念混淆
     # 错误2: "3G网络利用正交频分复用" -> 主要是4G/5G，3G主要是CDMA
     # 错误3: "子载波之间需要设置保护频带" -> OFDM的优势就是利用正交性取消了保护频带(Guard Band)的需求(除了CP)
