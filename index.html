@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EduProcess - AI 内容批判 (Final Stable)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        ::selection {
+            background-color: #fde047;
+            color: black;
+        }
+        .hidden-force {
+            display: none !important;
+            pointer-events: none !important;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 h-screen flex flex-col text-gray-800 font-sans">
+
+    <!-- 顶部 -->
+    <header class="bg-indigo-600 text-white p-4 shadow-md flex justify-between items-center flex-shrink-0">
+        <div class="flex items-center gap-2">
+            <div class="w-8 h-8 bg-white text-indigo-600 rounded-full flex items-center justify-center font-bold">E</div>
+            <h1 class="text-xl font-bold">EduProcess 过程性评估</h1>
+        </div>
+        <div class="text-sm opacity-80">学生端 / AI 内容批判模块</div>
+    </header>
+
+    <main class="flex-1 flex overflow-hidden">
+
+        <!-- 左侧：题目 -->
+        <div class="w-2/3 p-8 overflow-y-auto border-r border-gray-200 bg-white">
+            <div id="loading" class="text-center mt-20 text-gray-500">
+                <p>正在连接后端加载题目...</p>
+            </div>
+
+            <div id="task-container" class="hidden">
+                <div class="mb-6">
+                    <span class="bg-blue-100 text-blue-800 text-xs font-semibold mr-2 px-2.5 py-0.5 rounded">任务进行中</span>
+                    <h2 id="task-title" class="text-3xl font-bold text-gray-900 mt-2"></h2>
+                    <p class="text-gray-500 text-sm mt-1">请阅读下方 AI 生成的文本，选中错误部分并进行纠正。</p>
+                </div>
+
+                <div class="bg-gray-50 p-8 rounded-xl border border-gray-200 shadow-sm leading-loose text-lg text-gray-800 relative select-text" id="content-area"></div>
+
+                <div class="mt-4 text-sm text-gray-400">
+                    <p>* 操作提示：选中错误段落即可。如果选中位置与已有记录重叠，旧记录将被新记录覆盖。</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧：纠错列表 -->
+        <div class="w-1/3 bg-gray-50 flex flex-col border-l border-gray-200">
+            <div class="p-6 border-b border-gray-200 bg-white flex-shrink-0">
+                <h3 class="font-bold text-gray-700 flex items-center gap-2">
+                    我的纠错记录
+                    <span id="critique-count" class="bg-indigo-100 text-indigo-800 text-xs font-medium px-2.5 py-0.5 rounded-full">0</span>
+                </h3>
+            </div>
+
+            <!-- 关键修复：这里的结构改了，请确保完全覆盖旧代码 -->
+            <div class="flex-1 overflow-y-auto p-4 relative">
+                <!-- 提示语：独立存在 -->
+                <div id="empty-state" class="text-center mt-10 text-gray-400 text-sm absolute inset-x-0 top-10 pointer-events-none">
+                    <p>暂无纠错记录</p>
+                    <p>请在左侧选中文本开始</p>
+                </div>
+
+                <!-- 列表容器：独立存在 -->
+                <div id="critique-list" class="space-y-4 relative z-10"></div>
+            </div>
+
+            <div class="p-4 bg-white border-t border-gray-200 flex-shrink-0">
+                <button onclick="submitAssignment()" id="submit-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg shadow transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                    提交任务 (Submit)
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- 弹窗 -->
+    <div id="modal-backdrop" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden-force flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6 transform transition-all m-4">
+            <h3 class="text-lg font-bold text-gray-900 mb-2">添加纠错</h3>
+
+            <div class="mb-4 bg-amber-50 border-l-4 border-amber-500 p-2">
+                <p class="text-xs text-amber-700 font-medium">
+                    ⚠️ 请确保您选择的是确凿的错误，误判正确内容将会影响您的精确度得分。
+                </p>
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2">选中的错误原文 (Quote)</label>
+                <div id="modal-quote" class="p-3 bg-red-50 text-red-700 rounded border border-red-100 text-sm italic max-h-24 overflow-y-auto"></div>
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2">你的修正 (Rewrite)</label>
+                <textarea id="input-rewrite" rows="3" class="w-full px-3 py-2 text-gray-700 border rounded-lg focus:outline-none focus:border-indigo-500" placeholder="这里应该怎么写？"></textarea>
+            </div>
+
+            <div class="mb-6">
+                <label class="block text-gray-700 text-sm font-bold mb-2">理论依据 (Citation)</label>
+                <input id="input-citation" type="text" class="w-full px-3 py-2 text-gray-700 border rounded-lg focus:outline-none focus:border-indigo-500" placeholder="例如：根据通信原理第3章...">
+            </div>
+
+            <div class="flex justify-end gap-3">
+                <button onclick="closeModal()" class="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300">取消</button>
+                <button onclick="saveCritique()" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">保存记录</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentTaskId = 1;
+        let critiques = [];
+        let tempSelection = null;
+        const API_BASE = "http://127.0.0.1:8000";
+
+        window.onload = function() {
+            loadTask();
+            setupSelectionListener();
+        };
+
+        async function loadTask() {
+            try {
+                const res = await fetch(`${API_BASE}/tasks/${currentTaskId}`);
+                if (!res.ok) throw new Error("无法连接后端");
+                const data = await res.json();
+                document.getElementById('loading').classList.add('hidden-force');
+                document.getElementById('task-container').classList.remove('hidden');
+                document.getElementById('task-title').innerText = data.title;
+                document.getElementById('content-area').innerText = data.content;
+            } catch (err) {
+                document.getElementById('loading').innerHTML = `<p class="text-red-500 font-bold">加载失败: ${err.message}</p><p>请确认后端已运行在 ${API_BASE}</p>`;
+            }
+        }
+
+        function setupSelectionListener() {
+            const contentArea = document.getElementById('content-area');
+            contentArea.addEventListener('mouseup', () => {
+                setTimeout(() => handleSelection(contentArea), 10);
+            });
+        }
+
+        function handleSelection(container) {
+            const selection = window.getSelection();
+            if (!selection || selection.rangeCount === 0) return;
+
+            const selectedText = selection.toString().trim();
+            if (selectedText.length === 0) return;
+
+            if (!container.contains(selection.anchorNode)) return;
+
+            try {
+                const range = selection.getRangeAt(0);
+                const preSelectionRange = range.cloneRange();
+                preSelectionRange.selectNodeContents(container);
+                preSelectionRange.setEnd(range.startContainer, range.startOffset);
+
+                const start = preSelectionRange.toString().length;
+                const end = start + selectedText.length;
+
+                openModal({ quote: selectedText, start: start, end: end });
+            } catch (error) {
+                console.error("Selection error:", error);
+                selection.removeAllRanges();
+            }
+        }
+
+        function openModal(data) {
+            tempSelection = data;
+            document.getElementById('modal-quote').innerText = data.quote;
+            document.getElementById('input-rewrite').value = "";
+            document.getElementById('input-citation').value = "";
+
+            const modal = document.getElementById('modal-backdrop');
+            modal.classList.remove('hidden-force');
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('modal-backdrop');
+            modal.classList.add('hidden-force');
+            window.getSelection().removeAllRanges();
+            tempSelection = null;
+        }
+
+        function saveCritique() {
+            if (!tempSelection) { alert("状态错误，请重试"); closeModal(); return; }
+
+            const rewrite = document.getElementById('input-rewrite').value;
+            const citation = document.getElementById('input-citation').value;
+
+            if (!rewrite) { alert("请填写修正内容"); return; }
+
+            const newCritique = {
+                quote: tempSelection.quote,
+                rewrite: rewrite,
+                citation: citation,
+                selection_range: [tempSelection.start, tempSelection.end]
+            };
+
+            // 覆盖逻辑
+            const startNew = newCritique.selection_range[0];
+            const endNew = newCritique.selection_range[1];
+
+            critiques = critiques.filter(item => {
+                const startOld = item.selection_range[0];
+                const endOld = item.selection_range[1];
+                return !(startOld < endNew && endOld > startNew); // 只要重叠就删掉旧的
+            });
+
+            critiques.push(newCritique);
+            critiques.sort((a, b) => a.selection_range[0] - b.selection_range[0]);
+
+            renderCritiqueList(); // 重新渲染列表
+            closeModal();
+        }
+
+        function renderCritiqueList() {
+            const listEl = document.getElementById('critique-list');
+            const emptyEl = document.getElementById('empty-state');
+            const countEl = document.getElementById('critique-count');
+
+            if (countEl) countEl.innerText = critiques.length;
+
+            // 防御性编程：如果元素丢了，不报错，直接返回
+            if (!listEl) { console.error("Error: list element not found"); return; }
+
+            // 清空列表
+            listEl.innerHTML = '';
+
+            // 处理空状态显示 (防御性写法)
+            if (emptyEl) {
+                if (critiques.length > 0) {
+                    emptyEl.classList.add('hidden-force');
+                } else {
+                    emptyEl.classList.remove('hidden-force');
+                }
+            }
+
+            // 渲染卡片
+            critiques.forEach((item) => {
+                const card = document.createElement('div');
+                card.className = "bg-white p-4 rounded-lg border border-gray-200 shadow-sm text-sm hover:border-indigo-300 transition-colors";
+                card.innerHTML = `
+                    <div class="mb-2">
+                        <span class="text-xs font-bold text-red-500 bg-red-50 px-1 py-0.5 rounded">错</span>
+                        <span class="text-gray-600 line-through ml-1 decoration-red-300">${item.quote}</span>
+                    </div>
+                    <div class="mb-2">
+                        <span class="text-xs font-bold text-green-600 bg-green-50 px-1 py-0.5 rounded">对</span>
+                        <span class="text-gray-800 font-medium ml-1">${item.rewrite}</span>
+                    </div>
+                    <div class="text-xs text-gray-400 flex items-center gap-1">
+                        <span>📚</span> ${item.citation || "暂无依据"}
+                    </div>
+                `;
+                listEl.appendChild(card);
+            });
+        }
+
+        async function submitAssignment() {
+            if (critiques.length === 0) { alert("请先完成任务"); return; }
+            const btn = document.getElementById('submit-btn');
+            const originalText = btn.innerText;
+            btn.innerText = "提交中...";
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(`${API_BASE}/submit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        task_id: currentTaskId,
+                        student_id: "DEMO_STUDENT_001",
+                        critiques: critiques
+                    })
+                });
+                if (!res.ok) throw new Error("Error");
+                const result = await res.json();
+                alert(`提交成功！ID: ${result.id}`);
+                window.location.reload();
+            } catch (err) {
+                alert("提交失败");
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>

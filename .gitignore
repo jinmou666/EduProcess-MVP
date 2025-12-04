@@ -1,0 +1,24 @@
+Python 编译垃圾
+
+pycache/
+*.py[cod]
+*$py.class
+
+环境变量与虚拟环境 (防止你以后把环境装在项目里)
+
+.env
+venv/
+env/
+.venv/
+
+数据库 (核心规则)
+
+我们不上传二进制数据库文件，因为你有 init_data.py 脚本可以随时重新生成它
+
+*.db
+*.sqlite3
+
+IDE 配置文件 (不需要上传你的 PyCharm 配置)
+
+.idea/
+.vscode/
