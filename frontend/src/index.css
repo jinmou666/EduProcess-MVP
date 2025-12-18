@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@import 'reactflow/dist/style.css';
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden; /* 防止双重滚动条 */
+}
+/* 1. 默认连线：实线，不闪烁，深灰色 */
+.react-flow__edge-path {
+  stroke: #64748b; /* slate-500 */
+  stroke-width: 2;
+  stroke-dasharray: 0 !important; /* 强制实线 */
+  transition: all 0.3s ease;
+}
+
+/* 2. 双向连线：紫色，加粗 */
+.react-flow__edge[data-bi="true"] .react-flow__edge-path {
+  stroke: #7c3aed; /* violet-600 */
+  stroke-width: 3;
+}
+
+/* 3. 选中状态：虚线 + 滚动动画 + 变色 */
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #f59e0b !important; /* amber-500 (高亮色) */
+  stroke-width: 3;
+  stroke-dasharray: 5 !important; /* 变成虚线 */
+  animation: dashdraw 0.5s linear infinite; /* 跑马灯动画 */
+}
+
+/* 定义动画关键帧 */
+@keyframes dashdraw {
+  from {
+    stroke-dashoffset: 10;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}

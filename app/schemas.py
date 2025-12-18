@@ -1,36 +1,26 @@
 from pydantic import BaseModel
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Dict
+from datetime import datetime
 
-# --- 基础组件模型 ---
-
+# --- 基础组件模型 (原有) ---
 class CritiqueItem(BaseModel):
-    """前端传来的单个纠错点"""
-    quote: str          # 选中的错误原文
-    rewrite: str        # 学生的重写
-    citation: str       # 理论依据
-    selection_range: List[int] # 高亮位置 [start_index, end_index]
+    quote: str
+    rewrite: str
+    citation: str
+    selection_range: List[int]
 
-# --- Task 相关 ---
-
+# --- Task 相关 (原有) ---
 class TaskBase(BaseModel):
     title: str
-    content: str
-
-class TaskCreate(TaskBase):
-    preset_errors: List[Any] = []
+    content: Optional[str] = None
 
 class TaskOut(TaskBase):
     id: int
-    # 在做题界面，通常不把 preset_errors (答案) 返回给前端，防止作弊
-    # 但如果是练习模式，可能需要。这里MVP暂时不返回。
-
     class Config:
         orm_mode = True
 
-# --- Submission 相关 ---
-
+# --- Submission 相关 (原有) ---
 class SubmissionCreate(BaseModel):
-    """学生提交时的请求体"""
     task_id: int
     student_id: str
     critiques: List[CritiqueItem]
@@ -38,6 +28,32 @@ class SubmissionCreate(BaseModel):
 class SubmissionOut(SubmissionCreate):
     id: int
     created_at: Any
+    class Config:
+        orm_mode = True
 
+# ==========================================
+# 新增：拓扑构筑相关模型
+# ==========================================
+
+class AdjacencyItem(BaseModel):
+    source: str
+    target: str
+    relation: str = "connects"
+
+class TopologySubmissionCreate(BaseModel):
+    """
+    匹配前端 ConceptMap.tsx 发送的 payload
+    """
+    task_id: int
+    student_id: str
+    # 原始 React Flow 数据 (用于回放/重建画布)
+    raw_flow_data: Dict[str, Any]
+    # 清洗后的邻接表 (用于算法比对)
+    adjacency_list: List[AdjacencyItem]
+
+class TopologySubmissionOut(BaseModel):
+    id: int
+    status: str
+    saved_file: str # 告诉前端文件存哪了
     class Config:
         orm_mode = True
