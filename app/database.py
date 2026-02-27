@@ -1,26 +1,19 @@
+import os
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
 
-# Postgres，把下面这行注释掉，打开第二行。
-SQLALCHEMY_DATABASE_URL = "sqlite:///./sql_app.db"
-# SQLALCHEMY_DATABASE_URL = "postgresql://user:password@localhost/dbname"
+# 获取当前文件所在目录的上一级目录（即项目根目录，EduProcess-MVP-xxx）
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# 创建数据库引擎
+# 强制将数据库文件绑定在根目录下
+DB_PATH = os.path.join(BASE_DIR, "sql_app.db")
+SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
+
+# SQLite 需要 check_same_thread=False
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False} if "sqlite" in SQLALCHEMY_DATABASE_URL else {}
+    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
 )
-
-# 创建会话工厂
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# 声明基类
 Base = declarative_base()
-
-# 依赖项：每个请求获取一个数据库会话，请求结束自动关闭
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
