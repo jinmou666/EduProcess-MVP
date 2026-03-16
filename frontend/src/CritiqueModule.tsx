@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
-// 类型定义拓展
+// --- 类型定义 ---
 type Critique = {
   quote: string;
   rewrite: string;
@@ -17,24 +17,23 @@ type TaskData = {
 };
 
 const API_BASE = "http://127.0.0.1:8000";
+// 🚨 全局硬编码的学生身份！必须与 init_data.py 中生成的一致
+const CURRENT_STUDENT_ID = "20230001";
 
 export default function CritiqueModule() {
-  // 视图控制：'list' 列表页, 'detail' 任务详情页
   const [view, setView] = useState<'list' | 'detail'>('list');
   const [tasks, setTasks] = useState<TaskData[]>([]);
-
   const [task, setTask] = useState<TaskData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [critiques, setCritiques] = useState<Critique[]>([]);
 
-  // 弹窗状态
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [tempSelection, setTempSelection] = useState<{quote: string, start: number, end: number} | null>(null);
   const [rewriteInput, setRewriteInput] = useState("");
   const [citationInput, setCitationInput] = useState("");
 
-  // 1. 初始化加载任务列表
+  // 1. 获取任务列表 (依然请求 /tasks)
   useEffect(() => {
     fetch(`${API_BASE}/tasks`)
       .then(res => {
@@ -51,21 +50,35 @@ export default function CritiqueModule() {
       });
   }, []);
 
-  // 格式化日期辅助函数
   const formatDate = (dateStr: string) => {
     if (!dateStr) return "未设定";
     const d = new Date(dateStr);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
 
-  // 进入具体任务
-  const handleTaskClick = (selectedTask: TaskData) => {
+  // 2. 进入具体任务：拉取该学生之前的历史提交数据
+  const handleTaskClick = async (selectedTask: TaskData) => {
     setTask(selectedTask);
-    setCritiques([]); // 清空旧记录
     setView('detail');
+
+    // 【核心改动：对接后端的 GET /critique/{task_id}/{student_id}】
+    try {
+      const res = await fetch(`${API_BASE}/critique/${selectedTask.id}/${CURRENT_STUDENT_ID}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCritiques(data.critiques_data || []);
+      } else if (res.status === 404) {
+        // 如果报 404，说明该学生还没做过这个任务，初始化为空数组
+        setCritiques([]);
+      } else {
+        console.error("Failed to load past submission");
+      }
+    } catch (err) {
+      console.error("Network error:", err);
+      setCritiques([]);
+    }
   };
 
-  // 2. 处理文本选中 (原有逻辑不变)
   const handleMouseUp = useCallback(() => {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return;
@@ -89,7 +102,6 @@ export default function CritiqueModule() {
     setCitationInput("");
   }, [task]);
 
-  // 3. 保存纠错 (原有逻辑不变)
   const saveCritique = () => {
     if (!tempSelection || !rewriteInput) return;
 
@@ -115,27 +127,30 @@ export default function CritiqueModule() {
     window.getSelection()?.removeAllRanges();
   };
 
-  // 4. 提交 (原有逻辑不变)
+  // 3. 提交数据：快照覆写模式
   const submitAssignment = async () => {
     try {
-      const res = await fetch(`${API_BASE}/submit`, {
-        method: 'POST',
+      // 【核心改动：使用 PUT，指向精确的 RESTful 路由，Payload 只传 critiques_data】
+      const res = await fetch(`${API_BASE}/critique/${task?.id}/${CURRENT_STUDENT_ID}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          task_id: task?.id || 1,
-          student_id: "STU_REACT_001",
-          critiques: critiques
+          critiques_data: critiques
         })
       });
-      const data = await res.json();
-      alert(`提交成功 ID: ${data.id}`);
-      setView('list'); // 提交成功后退回列表
-    } catch (err) {
-      alert("提交失败");
+
+      if (!res.ok) {
+         const errData = await res.json();
+         throw new Error(errData.detail || "提交失败");
+      }
+
+      alert(`保存成功！这属于全量快照覆盖。`);
+      setView('list');
+    } catch (err: any) {
+      alert(`保存失败: ${err.message}`);
     }
   };
 
-  // 5. 渲染高亮文本 (原有逻辑不变)
   const renderHighlightedContent = () => {
     if (!task) return null;
     const text = task.content;
@@ -167,11 +182,9 @@ export default function CritiqueModule() {
     return elements;
   };
 
-  // 加载状态
   if (loading) return <div className="p-8 text-center text-gray-500">正在加载数据...</div>;
   if (error) return <div className="p-8 text-center text-red-500">错误: {error}</div>;
 
-  // --- 视图 1：任务列表页 ---
   if (view === 'list') {
     return (
       <div className="h-full overflow-y-auto bg-gray-100 p-8">
@@ -218,10 +231,8 @@ export default function CritiqueModule() {
     );
   }
 
-  // --- 视图 2：任务详情页 (原有界面拓展) ---
   return (
     <div className="flex h-full overflow-hidden relative">
-      {/* 返回按钮 */}
       <div className="absolute top-4 left-4 z-10">
         <button
           onClick={() => setView('list')}
@@ -231,7 +242,6 @@ export default function CritiqueModule() {
         </button>
       </div>
 
-      {/* 左侧：题目 */}
       <div className="w-2/3 pt-20 px-10 pb-10 overflow-y-auto bg-white border-r">
         <div className="flex justify-between items-end mb-6">
           <h2 className="text-3xl font-bold">{task?.title}</h2>
@@ -251,7 +261,6 @@ export default function CritiqueModule() {
         <p className="mt-4 text-sm text-gray-400 font-medium">* 鼠标拖拽选中文本进行纠错，重叠区域会自动覆盖。</p>
       </div>
 
-      {/* 右侧：列表 */}
       <div className="w-1/3 bg-gray-50 flex flex-col border-l">
         <div className="p-4 border-b bg-white font-bold text-gray-700 flex justify-between items-center">
           <span>纠错记录</span>
@@ -285,12 +294,11 @@ export default function CritiqueModule() {
               disabled={critiques.length === 0}
               className={`w-full py-3 rounded-lg font-bold shadow transition-colors ${critiques.length > 0 ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
             >
-                提交任务
+                保存此版本
             </button>
         </div>
       </div>
 
-      {/* 弹窗 (Modal) */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
             <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl transform transition-all">

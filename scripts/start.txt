@@ -1,2 +1,61 @@
 uvicorn app.main:app --reload
 npm run dev
+现在我要对我这个项目期望实现的功能进行一个全面的自然语言描述，我需要你帮我从中尽可能全面地挖掘出用以实现我所期望的功能所有角色，属性，目标等等，建立他们之间应有的关系，找寻构建数据库的可能，在我当前项目的基础上，形成一份帮助我优化构筑更加真实的后端逻辑的提示词，且要目前已有的逻辑完备的保留，逻辑还有不足的地方优化。注意，我需要你生成地是一份提示词。
+
+首先我需要每个学生在他进入到自己的学生端时能够获取到自己的那份过往保存的数据。
+
+学生目前的属性就是学号和姓名，学号作为主键用以区分来获取对应数据。
+
+学生界面先和现在的保持不变，大致分为AI生成文本纠错界面，概念拓扑图构建界面，真实性任务界面。
+
+首先是文本纠错界面，在这个界面学生接收到多项任务，任务都应该由教师端发布，但现在我们逻辑简化，就用本地预设的替代。每项任务有发布时间，截止时间，标题，需要纠错地文本内容，联系的章节，任务ID这些属性。其中任务ID是主键用以区分不同的任务。文本纠错的界面像现在前端的样式纵向排布多行任务，且只展示各项任务的发布时间，截止时间，标题。点进具体的任务展示内容和现在相同。现在不足的是过往上传的历史纠错记录未加展示，我需要每个任务过往上传的纠错记录在我进入具体的任务页面加载出来。这就需要我能够对过往的纠错记录在本地进行保存。纠错记录的属性就是选定的字段，更正的呢日哦那个，理论依据。现在的纠错记录存在覆盖逻辑，这个逻辑可以保留。
+
+第二个是概念拓扑图构筑。目前可以先保留现在的构筑界面及基本的功能逻辑，但我也需要对提交的已形成的拓扑图进行保存，在即使我关闭页面重新打开页面之后也要能加载出来，并进行我需要的更改。
+
+最后一个是真实性任务界面。
+
+///
+你现在是我的后端主架构师兼全栈开发专家。我正在使用 FastAPI 和 SQLAlchemy 构建一个名为 EduProcess-MVP 的项目。我们需要在现有的代码库（app/models.py, app/schemas.py, app/main.py）基础上，重构并扩展后端逻辑，以支持三个核心学习模块。
+
+请你严格基于以下业务对象（实体、属性、关系）的自然语言描述，为我输出具备生产环境质量的：
+1. SQLAlchemy Models (注意表与表之间的外键约束与反向关系)
+2. Pydantic Schemas (需要严格区分 Create, Update, Response 模型)
+3. 对应的 FastAPI 路由函数 (CRUD逻辑)
+
+不要关心前端页面的颜色、布局和动画，全部心思放在数据结构的严谨性和接口的高效响应上。
+
+【核心全局实体：学生身份】
+- 需求描述：系统必须有独立的“学生”实体，不能仅仅将学号作为零散的字符串存储。
+- 实体属性：Student (主键：学号 student_id，姓名 name，创建时间)。
+- 关联逻辑：后续所有模块的 Submission 或 Iteration 记录，都必须与 Student 表建立强外键关联。前端进入应用时，所有拉取数据的接口都需传入该 student_id。
+
+【模块一：文本纠错 (Text Critique)】
+- 业务逻辑：教师发布任务，学生提交针对文本的纠错。一个任务对应多个学生的提交，但一个学生在一个任务下【只保留一份最新的草稿数据】（覆盖更新逻辑）。前端需要能够拉取该学生在特定任务下的过往已保存记录。
+- 实体拆解：
+  - Task: id(PK), title, content, related_chapter(章节), publish_date, deadline, preset_errors(JSON)。
+  - CritiqueSubmission: id(PK), task_id(FK), student_id(FK), critiques_data(JSON, 内部结构包含：选定字段, 更正内容, 理论依据), updated_at。
+- 接口需求：提供基于 student_id 和 task_id 的 `upsert` (存在则更新，不存在则创建) 接口，以及查询该学生在该任务下最新记录的 GET 接口。
+
+【模块二：概念拓扑图构筑 (Topology Construction)】
+- 业务逻辑：学生拖拽节点连线生成拓扑图。需要支持“保存-关闭-重新打开加载”的连续工作流。
+- 实体拆解 (基于现有进行优化)：
+  - TopologyTask: 维持现有设计不变。
+  - TopologySubmission: id(PK), task_id(FK), student_id(FK), raw_flow_data(JSON, 保存前端完整画布状态), adjacency_list(JSON, 后端计算用), last_saved_at(DateTime)。
+- 接口需求：提供画布状态持久化保存的 POST/PUT 接口，以及根据 student_id + task_id 原样恢复 `raw_flow_data` 给前端重新渲染的 GET 接口。
+
+【模块三：真实性任务工作台 (Authenticity Task Workspace) —— 全新构建】
+- 业务逻辑：这是一个“人机协作轨迹取证中心”。绝非简单的一锤子买卖表单，而是一个【版本控制系统】。学生为同一个任务可以提交多次，每一次提交形成一个“迭代版本(Iteration)”。
+- 实体拆解：
+  - AuthenticityTask: id(PK), title, context_description(复杂问题描述), evaluation_criteria(评估标准)。
+  - AuthenticityIteration (核心增量表): id(PK), task_id(FK), student_id(FK), version_number(Integer, 当前任务下的第几次提交，如 1, 2, 3), created_at(提交时间戳)。
+    - 数据负载属性：
+      1. deliverable_payload (JSON/String: 暂时只存代码仓链接或外部网盘URL，不要做物理文件存储逻辑)。
+      2. collaboration_matrix (JSON: 结构化存储各阶段的人机贡献比例。如 {"research": {"human": 30, "ai": 70}, "drafting": {"human": 50, "ai": 50}})。
+      3. tools_used (JSON Array: 存储使用的AI工具枚举字符串，如 ["ChatGPT", "Claude"])。
+      4. reflection_log (Text: 强制反思验证的长文本)。
+- 接口需求：
+  1. POST: 提交新的迭代版本 (自动计算该学生此任务下的 version_number + 1)。
+  2. GET: 拉取某学生某任务下的【所有迭代版本历史的时间轴列表】，要求按照 version_number 倒序排列。此接口必须一次性返回每个版本的人机比例矩阵，以便前端渲染随时间推移的折线图/动态柱状图。
+
+执行要求：代码需包含必要的异常捕获（如未找到记录抛出404，外键冲突抛出400）。请直接输出具体的代码结构。
+///

@@ -1,18 +1,17 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from fastapi.middleware.cors import CORSMiddleware
-import json
-import os
-import time
+from sqlalchemy import func
 from typing import List
+from fastapi.middleware.cors import CORSMiddleware
+
 from . import models, schemas, database
 
-# 1. 数据库初始化
+# 初始化数据库结构
 models.Base.metadata.create_all(bind=database.engine)
 
-app = FastAPI(title="EduProcess System API")
+app = FastAPI(title="EduProcess API System")
 
-# 2. CORS 配置
+# !!! 别忘了 CORS，否则前端跨域会被拦截 !!!
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,7 +20,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 3. 依赖项
+
 def get_db():
     db = database.SessionLocal()
     try:
@@ -29,94 +28,153 @@ def get_db():
     finally:
         db.close()
 
-# --- 辅助函数 ---
-UPLOAD_DIR = "submitted_topologies"
-if not os.path.exists(UPLOAD_DIR):
-    os.makedirs(UPLOAD_DIR)
 
-@app.get("/")
-def root():
-    return {"message": "EduProcess Backend Online"}
+def verify_student_and_task(db: Session, student_id: str, task_id: int, task_model: models.Base):
+    student = db.query(models.Student).filter(models.Student.student_id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Student {student_id} not found.")
+    task = db.query(task_model).filter(task_model.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Task {task_id} not found.")
+    return student, task
 
 
-# ================= 模块 1: 批判 (Critique) =================
+# ==========================================
+# 模块一：文本纠错 (快照覆写模式)
+# ==========================================
 
-# 新增：获取任务列表接口
+# 【新增：补回前端需要的任务列表接口】
 @app.get("/tasks", response_model=List[schemas.TaskOut])
 def get_all_critique_tasks(db: Session = Depends(get_db)):
-    # 按照发布时间升序排列（越早越靠前）
+    """获取所有待批判的任务列表"""
     tasks = db.query(models.Task).order_by(models.Task.publish_date.asc()).all()
     return tasks
 
-@app.get("/tasks/{task_id}", response_model=schemas.TaskOut)
-def get_critique_task(task_id: int, db: Session = Depends(get_db)):
-    task = db.query(models.Task).filter(models.Task.id == task_id).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    return task
 
-@app.post("/submit", response_model=schemas.SubmissionOut)
-def submit_critique(submission: schemas.SubmissionCreate, db: Session = Depends(get_db)):
-    critiques_data = [item.dict() for item in submission.critiques]
-    db_obj = models.Submission(
-        task_id=submission.task_id,
-        student_id=submission.student_id,
-        critiques=critiques_data
-    )
-    db.add(db_obj)
+@app.get("/critique/{task_id}/{student_id}", response_model=schemas.CritiqueSubmissionOut)
+def get_critique_submission(task_id: int, student_id: str, db: Session = Depends(get_db)):
+    """拉取最新纠错记录，不存在则报404或由前端处理"""
+    submission = db.query(models.CritiqueSubmission).filter(
+        models.CritiqueSubmission.task_id == task_id,
+        models.CritiqueSubmission.student_id == student_id
+    ).first()
+    if not submission:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found.")
+    return submission
+
+
+@app.put("/critique/{task_id}/{student_id}", response_model=schemas.CritiqueSubmissionOut)
+def upsert_critique_submission(
+        task_id: int,
+        student_id: str,
+        payload: schemas.CritiqueSubmissionCreate,
+        db: Session = Depends(get_db)
+):
+    """执行快照覆写逻辑"""
+    verify_student_and_task(db, student_id, task_id, models.Task)
+
+    submission = db.query(models.CritiqueSubmission).filter(
+        models.CritiqueSubmission.task_id == task_id,
+        models.CritiqueSubmission.student_id == student_id
+    ).first()
+
+    if submission:
+        submission.critiques_data = payload.critiques_data
+    else:
+        submission = models.CritiqueSubmission(
+            task_id=task_id,
+            student_id=student_id,
+            critiques_data=payload.critiques_data
+        )
+        db.add(submission)
+
     db.commit()
-    db.refresh(db_obj)
-    return db_obj
+    db.refresh(submission)
+    return submission
 
 
-# ================= 模块 2: 拓扑 (Topology) =================
+# ... （下方保留模块二和模块三的原有代码，注意不要删掉它们！）...
+# ==========================================
+# 模块二：概念拓扑图 (画布状态持久化)
+# ==========================================
+@app.get("/topology/{task_id}/{student_id}", response_model=schemas.TopologySubmissionOut)
+def get_topology_submission(task_id: int, student_id: str, db: Session = Depends(get_db)):
+    submission = db.query(models.TopologySubmission).filter(
+        models.TopologySubmission.task_id == task_id,
+        models.TopologySubmission.student_id == student_id
+    ).first()
+    if not submission:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Topology submission not found.")
+    return submission
 
-@app.post("/topology/submit", response_model=schemas.TopologySubmissionOut)
-def submit_topology(submission: schemas.TopologySubmissionCreate, db: Session = Depends(get_db)):
-    adj_list_data = [item.dict() for item in submission.adjacency_list]
-    db_obj = models.TopologySubmission(
-        task_id=submission.task_id,
-        student_id=submission.student_id,
-        raw_flow_data=submission.raw_flow_data,
-        adjacency_list=adj_list_data
-    )
-    db.add(db_obj)
+
+@app.put("/topology/{task_id}/{student_id}", response_model=schemas.TopologySubmissionOut)
+def upsert_topology_submission(
+        task_id: int,
+        student_id: str,
+        payload: schemas.TopologySubmissionCreate,
+        db: Session = Depends(get_db)
+):
+    verify_student_and_task(db, student_id, task_id, models.TopologyTask)
+
+    submission = db.query(models.TopologySubmission).filter(
+        models.TopologySubmission.task_id == task_id,
+        models.TopologySubmission.student_id == student_id
+    ).first()
+
+    if submission:
+        submission.raw_flow_data = payload.raw_flow_data
+        submission.adjacency_list = payload.adjacency_list
+    else:
+        submission = models.TopologySubmission(
+            task_id=task_id,
+            student_id=student_id,
+            raw_flow_data=payload.raw_flow_data,
+            adjacency_list=payload.adjacency_list
+        )
+        db.add(submission)
+
     db.commit()
-    db.refresh(db_obj)
+    db.refresh(submission)
+    return submission
 
-    filename = f"topology_{submission.student_id}_task{submission.task_id}.json"
-    filepath = os.path.join(UPLOAD_DIR, filename)
 
-    raw_nodes = submission.raw_flow_data.get('nodes', [])
-    concepts_list = []
-    for node in raw_nodes:
-        label = node.get('data', {}).get('label', 'Unknown')
-        concepts_list.append(label)
-    concepts_list = list(set(concepts_list))
+# ==========================================
+# 模块三：真实性任务工作台 (迭代版本控制)
+# ==========================================
+@app.get("/authenticity/{task_id}/{student_id}", response_model=List[schemas.AuthenticityIterationOut])
+def list_authenticity_iterations(task_id: int, student_id: str, db: Session = Depends(get_db)):
+    iterations = db.query(models.AuthenticityIteration).filter(
+        models.AuthenticityIteration.task_id == task_id,
+        models.AuthenticityIteration.student_id == student_id
+    ).order_by(models.AuthenticityIteration.version_number.desc()).all()
+    return iterations
 
-    file_content = {
-        "meta": {
-            "student_id": submission.student_id,
-            "task_id": submission.task_id,
-            "last_updated": int(time.time()),
-            "db_id": db_obj.id
-        },
-        "concepts": concepts_list,
-        "connections": adj_list_data
-    }
 
-    try:
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(file_content, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"文件保存失败: {e}")
+@app.post("/authenticity/{task_id}/{student_id}", response_model=schemas.AuthenticityIterationOut)
+def create_authenticity_iteration(
+        task_id: int,
+        student_id: str,
+        payload: schemas.AuthenticityIterationCreate,
+        db: Session = Depends(get_db)
+):
+    verify_student_and_task(db, student_id, task_id, models.AuthenticityTask)
+    max_version = db.query(func.max(models.AuthenticityIteration.version_number)).filter(
+        models.AuthenticityIteration.task_id == task_id,
+        models.AuthenticityIteration.student_id == student_id
+    ).scalar()
+    next_version = 1 if max_version is None else max_version + 1
 
-    return {
-        "id": db_obj.id,
-        "status": "success",
-        "saved_file": filename
-    }
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    new_iteration = models.AuthenticityIteration(
+        task_id=task_id,
+        student_id=student_id,
+        version_number=next_version,
+        deliverable_payload=payload.deliverable_payload,
+        collaboration_matrix=[stage.dict() for stage in payload.collaboration_matrix],
+        tools_used=payload.tools_used,
+        reflection_log=payload.reflection_log
+    )
+    db.add(new_iteration)
+    db.commit()
+    db.refresh(new_iteration)
+    return new_iteration
