@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState, useMemo } from 'react';
+import React, { useCallback, useRef, useState, useMemo, useEffect} from 'react';
 import ReactFlow, {
   MiniMap,
   Controls,
@@ -18,6 +18,12 @@ import type { Connection, Edge, Node, ReactFlowInstance, NodeChange, EdgeChange 
 import 'reactflow/dist/style.css';
 
 import MindMapNode from './MindMapNode';
+
+const nodeTypes = { mindMap: MindMapNode };
+
+const STUDENT_ID = "20230001";
+const TASK_ID = 1;
+const API_BASE = "http://127.0.0.1:8000";
 
 // --- 数据清洗 ---
 const transformToSemanticData = (nodes: Node[], edges: Edge[], studentId: string) => {
@@ -57,11 +63,39 @@ const initialNodes: Node[] = [
 ];
 
 const ConceptMapContent = () => {
-  const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const nodeTypes = useMemo(() => ({ mindMap: MindMapNode }), []);
 
+  const [feedbackMessage, setFeedbackMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [nodes, setNodes] = useNodesState(initialNodes);
   const [edges, setEdges] = useEdgesState([]);
+    // 恢复拓扑图数据
+  useEffect(() => {
+    const fetchTopology = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/topology/${TASK_ID}/${STUDENT_ID}`);
+        if (response.status === 404) {
+            console.log("No existing data found, starting fresh.");
+            return;
+        }
+        if (!response.ok) {
+            throw new Error(`Server responded with ${response.status}`);
+        }
+
+        const data = await response.json();
+        // 防御性检查，确保 raw_flow_data 存在
+        if (data?.raw_flow_data) {
+          if (data.raw_flow_data.nodes) setNodes(data.raw_flow_data.nodes);
+          if (data.raw_flow_data.edges) setEdges(data.raw_flow_data.edges);
+        }
+      } catch (error) {
+        console.error("Failed to load topology:", error);
+      }
+    };
+
+    fetchTopology();
+  }, [setNodes, setEdges]);
+
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
 
   const { toObject } = useReactFlow();
@@ -155,30 +189,37 @@ const ConceptMapContent = () => {
   }, [setNodes]);
 
   const submitTopology = async () => {
-    if (nodes.length < 1) {
-      alert("画布为空，请添加节点！");
-      return;
-    }
-    const cleanData = transformToSemanticData(nodes, edges, "STU_FINAL_SUBMISSION");
-    const payload = {
-      task_id: 1,
-      student_id: cleanData.student_id,
-      raw_flow_data: toObject(),
-      adjacency_list: cleanData.connections
-    };
     try {
-      const response = await fetch('http://127.0.0.1:8000/topology/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const payload = {
+        raw_flow_data: {
+          nodes: nodes,
+          edges: edges,
+        }
+      };
+
+      const response = await fetch(`${API_BASE}/topology/${TASK_ID}/${STUDENT_ID}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify(payload)
       });
-      if (!response.ok) throw new Error("后端报错");
-      const res = await response.json();
-      alert(`提交成功！\n文件已覆盖更新。\nSaved: ${res.saved_file}`);
-    } catch (err: any) {
-      alert(err.message);
+
+      if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+
+      // === 核心修改区 ===
+      setFeedbackMessage({ text: "✅ 拓扑图保存成功！", type: 'success' });
+      // 3秒后自动清除提示
+      setTimeout(() => setFeedbackMessage(null), 3000);
+
+    } catch (error) {
+      console.error("Failed to save topology:", error);
+      // === 核心修改区 ===
+      setFeedbackMessage({ text: "❌ 保存失败，请检查网络连接。", type: 'error' });
+      setTimeout(() => setFeedbackMessage(null), 4000);
     }
   };
+
 
   return (
     <div className="flex h-full w-full font-sans relative">
@@ -202,6 +243,19 @@ const ConceptMapContent = () => {
               提交作业
           </button>
       </div>
+
+      {/* 新增：全局 Toast 反馈 UI */}
+      {feedbackMessage && (
+        <div
+          className={`absolute top-4 left-1/2 transform -translate-x-1/2 z-50 px-6 py-3 rounded shadow-xl text-sm font-medium animate-fade-in-down ${
+            feedbackMessage.type === 'success'
+              ? 'bg-green-100 text-green-800 border border-green-300'
+              : 'bg-red-100 text-red-800 border border-red-300'
+          }`}
+        >
+          {feedbackMessage.text}
+        </div>
+      )}
 
       <div className="flex-grow h-full w-full bg-gray-50 relative" ref={reactFlowWrapper}>
         <ReactFlow
