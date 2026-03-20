@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 
 // --- 类型定义 ---
 type StageData = {
@@ -66,7 +66,27 @@ const MOCK_ITERATIONS: Iteration[] = [
 
 const AVAILABLE_TOOLS = ['ChatGPT', 'Claude 3.5', 'Midjourney', 'GitHub Copilot', 'Perplexity', 'Notion AI'];
 
+const STUDENT_ID = "20230001";
+const TASK_ID = 1;
+const API_BASE = "http://127.0.0.1:8000";
+
 export default function AuthenticityModule() {
+      // 多步弹窗表单状态
+  const [deliverableUrl, setDeliverableUrl] = useState<string>('');
+  // 新增/替换你的 collaborationMatrix 状态定义
+  const [collaborationMatrix, setCollaborationMatrix] = useState([
+    { stageName: '① 资料检索与破冰', humanPercent: 50, aiPercent: 50 , tools: []},
+    { stageName: '② 框架与逻辑构建', humanPercent: 50, aiPercent: 50 , tools: []},
+    { stageName: '③ 内容生成与开发', humanPercent: 50, aiPercent: 50, tools: [] },
+    { stageName: '④ 审阅、纠错与润色', humanPercent: 50, aiPercent: 50 , tools: []}
+  ]);
+
+  // 别忘了把 Feedback UI 也引进来（如果你在上一步没加的话）
+  const [feedbackMessage, setFeedbackMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  const [selectedTools, setSelectedTools] = useState<string[]>([]);
+  const [reflectionText, setReflectionText] = useState<string>('');
+
   const [iterations, setIterations] = useState<Iteration[]>(MOCK_ITERATIONS);
   const [hoveredIterationId, setHoveredIterationId] = useState<string | null>(null);
 
@@ -75,6 +95,60 @@ export default function AuthenticityModule() {
 
   const [submitStep, setSubmitStep] = useState(1);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set([MOCK_ITERATIONS[0].id]));
+
+    // 独立出 fetch 函数，以便在挂载和提交后复用
+  const fetchIterations = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/authenticity/${TASK_ID}/${STUDENT_ID}`);
+      if (response.status === 404) {
+            console.log("No existing data found, starting fresh.");
+            return;
+      }
+      if (!response.ok) {
+            throw new Error(`Server responded with ${response.status}`);
+      }
+
+
+      const data = await response.json();
+      if (data && data.length > 0) {
+        // === 核心数据清洗与适配层 (Adapter) ===
+        const mappedIterations: Iteration[] = data.map((item: any) => {
+          // 1. 安全处理时间戳，确保一定有空格可供 split
+          const dateObj = new Date(item.created_at);
+          const safeTimestamp = isNaN(dateObj.getTime())
+            ? "1970-01-01 00:00"
+            : `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')} ${String(dateObj.getHours()).padStart(2, '0')}:${String(dateObj.getMinutes()).padStart(2, '0')}`;
+
+          // 2. 严格对齐前端定义的 Iteration 类型
+          return {
+            id: `it_${item.id}`,
+            version: item.version_number,
+            timestamp: safeTimestamp, // 对齐前端 UI 的 timestamp
+            title: `真实性迭代版本 V${item.version_number}`, // 后端没有 title，前端动态生成
+            deltaNotes: item.reflection_log, // 将后端的反思日志映射到前端的 deltaNotes
+            deliverableUrl: item.deliverable_payload, // 载体链接映射
+            stages: item.collaboration_matrix.map((stage: any) => ({
+              stageName: stage.stageName || "未知阶段",
+              humanPercent: stage.humanPercent || 0,
+              aiPercent: stage.aiPercent || 0,
+              // 后端的 tools_used 是全局的，前端 UI 是每个 stage 渲染的，这里做兼容注入
+              tools: item.tools_used || []
+            }))
+          };
+        });
+
+        setIterations(mappedIterations);
+      }
+    } catch (error) {
+      console.error("Failed to load iterations:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchIterations();
+  }, []);
+
+
 
   const displayIteration = useMemo(() => {
     if (hoveredIterationId) {
@@ -90,8 +164,78 @@ export default function AuthenticityModule() {
     setExpandedCards(next);
   };
 
+  // 将此函数放在组件内，return 之前
+  const submitIteration = async () => {
+    // 1. 拦截后端死线：字数不够直接打回，不浪费网络资源
+    if (reflectionText.trim().length < 50) {
+      setFeedbackMessage({ text: "❌ 提交失败：反思日志不能少于 50 字（后端强制校验）。", type: 'error' });
+      setTimeout(() => setFeedbackMessage(null), 3000);
+      return;
+    }
+
+    try {
+      // 2. 字段名严格对齐后端 schemas.py
+      const globalTools = Array.from(new Set(collaborationMatrix.flatMap(stage => stage.tools)));
+
+      const payload = {
+        deliverable_payload: deliverableUrl || "未提供链接",
+        // 核心动作：后端 CollaborationStage 不接受 tools 字段，必须在这里把它剥离掉，否则报错 422
+        collaboration_matrix: collaborationMatrix.map(stage => ({
+          stageName: stage.stageName,
+          humanPercent: stage.humanPercent,
+          aiPercent: stage.aiPercent
+        })),
+        tools_used: globalTools,
+        reflection_log: reflectionText
+      };
+
+      const response = await fetch(`${API_BASE}/authenticity/${TASK_ID}/${STUDENT_ID}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+
+      // 3. 提交成功：UI 狂欢与战场打扫
+      setFeedbackMessage({ text: "✅ 迭代版本归档成功！", type: 'success' });
+      setTimeout(() => setFeedbackMessage(null), 3000);
+
+      // 重置所有表单状态为出厂设置
+      setDeliverableUrl('');
+      setCollaborationMatrix([
+        { stageName: '① 资料检索与破冰', humanPercent: 50, aiPercent: 50 },
+        { stageName: '② 框架与逻辑构建', humanPercent: 50, aiPercent: 50 },
+        { stageName: '③ 内容生成与开发', humanPercent: 50, aiPercent: 50 },
+        { stageName: '④ 审阅、纠错与润色', humanPercent: 50, aiPercent: 50 }
+      ]);
+      setSelectedTools([]);
+      setReflectionText('');
+
+      // 关门，刷新
+      setSubmitStep(1);
+      setIsSubmitModalOpen(false); // 关闭你的弹窗
+      await fetchIterations(); // 重新拉取列表，你的新版本将会出现在这里！
+
+    } catch (error) {
+      console.error("Failed to submit iteration:", error);
+      setFeedbackMessage({ text: "❌ 提交失败，请检查控制台或网络连接。", type: 'error' });
+      setTimeout(() => setFeedbackMessage(null), 4000);
+    }
+  };
+
+
+
   return (
     <div className="h-full w-full bg-gray-50 flex flex-col relative overflow-hidden">
+      {/* 全局 Toast 反馈 UI */}
+      {feedbackMessage && (
+        <div className={`fixed top-10 left-1/2 transform -translate-x-1/2 z-[100] px-6 py-3 rounded shadow-2xl text-sm font-medium ${
+          feedbackMessage.type === 'success' ? 'bg-green-100 text-green-800 border-green-300' : 'bg-red-100 text-red-800 border-red-300'
+        } border`}>
+          {feedbackMessage.text}
+        </div>
+      )}
 
       {/* 顶部全局悬浮按钮 */}
       <div className="absolute top-6 left-6 z-20">
@@ -322,7 +466,13 @@ export default function AuthenticityModule() {
                     </label>
                     <label className="block">
                       <span className="text-sm font-semibold text-gray-700 mb-1 block">文档/代码库 URL</span>
-                      <input type="url" className="w-full border-gray-300 rounded-lg p-3 bg-gray-50 border focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="https://..." />
+                      <input
+                        type="url"
+                        value={deliverableUrl}
+                        onChange={(e) => setDeliverableUrl(e.target.value)}
+                        className="w-full border-gray-300 rounded-lg p-3 bg-gray-50 border focus:ring-2 focus:ring-indigo-500 outline-none"
+                        placeholder="https://..."
+                      />
                     </label>
                     <div className="mt-6 border-2 border-dashed border-gray-300 rounded-xl p-10 flex flex-col items-center justify-center text-gray-400 bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors">
                       <svg className="w-10 h-10 mb-2 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
@@ -332,25 +482,33 @@ export default function AuthenticityModule() {
                 </div>
               )}
 
+              {/* 找到你渲染 Step 2 的地方，替换掉原有的进度条列表 */}
               {submitStep === 2 && (
                 <div className="animate-fade-in max-w-2xl mx-auto">
                   <h4 className="text-lg font-bold mb-6 flex items-center gap-2"><span className="bg-indigo-100 text-indigo-600 w-6 h-6 flex justify-center items-center rounded-full text-sm">2</span> 协作透明度矩阵 (Collaboration Matrix)</h4>
                   <p className="text-sm text-gray-500 mb-6">请如实评估在本版本迭代的各个阶段中，你与AI的工作比重。</p>
 
                   <div className="space-y-6">
-                    {MOCK_ITERATIONS[0].stages.map((stage, idx) => (
-                      <div key={idx} className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm hover:border-indigo-300 transition-colors">
+                    {collaborationMatrix.map((stage, index) => (
+                      <div key={index} className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm hover:border-indigo-300 transition-colors">
                         <div className="font-bold text-gray-800 mb-5">{stage.stageName}</div>
 
                         <div className="mb-6">
                           <div className="flex justify-between text-xs font-bold text-gray-400 mb-3 uppercase tracking-wider">
-                            <span className="text-indigo-600 bg-indigo-50 px-2 py-1 rounded">Human (100%)</span>
-                            <span className="text-orange-500 bg-orange-50 px-2 py-1 rounded">AI (100%)</span>
+                            <span className="text-indigo-600 bg-indigo-50 px-2 py-1 rounded">Human ({stage.humanPercent}%)</span>
+                            <span className="text-orange-500 bg-orange-50 px-2 py-1 rounded">AI ({stage.aiPercent}%)</span>
                           </div>
                           <input
                             type="range"
                             min="0" max="100"
-                            defaultValue="50"
+                            value={stage.humanPercent}
+                            onChange={(e) => {
+                              const newHuman = parseInt(e.target.value, 10);
+                              const newMatrix = [...collaborationMatrix];
+                              newMatrix[index].humanPercent = newHuman;
+                              newMatrix[index].aiPercent = 100 - newHuman;
+                              setCollaborationMatrix(newMatrix);
+                            }}
                             className="w-full h-2.5 bg-gradient-to-r from-indigo-500 to-orange-400 rounded-lg appearance-none cursor-pointer shadow-inner"
                           />
                         </div>
@@ -360,7 +518,23 @@ export default function AuthenticityModule() {
                           <div className="flex flex-wrap gap-2.5">
                             {AVAILABLE_TOOLS.map(t => (
                               <label key={t} className="flex items-center gap-2 bg-gray-50 border border-gray-200 px-3 py-2 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
-                                <input type="checkbox" className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500" />
+                                <input
+                                  type="checkbox"
+                                  // 1. 读取当前阶段独立的 tools 数组
+                                  checked={stage.tools.includes(t)}
+                                  onChange={(e) => {
+                                    const newMatrix = [...collaborationMatrix];
+                                    if (e.target.checked) {
+                                      // 选中：存入当前阶段
+                                      newMatrix[index].tools = [...newMatrix[index].tools, t];
+                                    } else {
+                                      // 取消选中：从当前阶段剔除
+                                      newMatrix[index].tools = newMatrix[index].tools.filter(tool => tool !== t);
+                                    }
+                                    setCollaborationMatrix(newMatrix);
+                                  }}
+                                  className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                                />
                                 <span className="text-sm text-gray-700 font-medium">{t}</span>
                               </label>
                             ))}
@@ -384,10 +558,14 @@ export default function AuthenticityModule() {
                       请简述此版本中，你推翻了AI的哪些错误建议？或你如何引导AI深化了结果？（不少于 50 字，此内容将作为关键评估依据）
                     </p>
                     <textarea
-                      className="w-full h-48 rounded-xl border-orange-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 p-4 text-sm resize-none shadow-sm"
-                      placeholder="在这一版中，我发现AI生成的代码存在安全漏洞，主要体现在..."
+                        value={reflectionText}
+                        onChange={(e) => setReflectionText(e.target.value)}
+                        className="w-full h-48 rounded-xl border-orange-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 p-4 text-sm resize-none shadow-sm"
+                        placeholder="在这一版中，我发现AI生成的代码存在安全漏洞，主要体现在..."
                     ></textarea>
-                    <div className="text-right text-xs text-orange-600 mt-3 font-mono font-bold">当前字数: 0 / 50 (不达标)</div>
+                    <div className={`text-right text-xs mt-3 font-mono font-bold ${reflectionText.trim().length >= 50 ? 'text-green-600' : 'text-orange-600'}`}>
+                        当前字数: {reflectionText.trim().length} / 50 {reflectionText.trim().length >= 50 ? '(已达标)' : '(不达标)'}
+                    </div>
                   </div>
                 </div>
               )}
@@ -413,11 +591,7 @@ export default function AuthenticityModule() {
               ) : (
                 <button
                   className="bg-green-600 text-white px-8 py-2.5 rounded-lg font-bold shadow-lg shadow-green-200 hover:bg-green-700 hover:-translate-y-0.5 transition-all"
-                  onClick={() => {
-                    alert('注意：这只是前端原型展示。你还需要编写后端的 models.py 以保存这些迭代数据！');
-                    setIsSubmitModalOpen(false);
-                    setSubmitStep(1);
-                  }}
+                  onClick={submitIteration}
                 >
                   确认归档此版本
                 </button>
