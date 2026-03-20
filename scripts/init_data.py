@@ -43,11 +43,50 @@ def init_db_data():
         publish_date=now - timedelta(days=10),
         deadline=now + timedelta(days=2),
         preset_errors=[
-            {"description": "OFDM子载波是正交的，不需要保护频带", "keyword": "需要设置保护频带"},
-            {"description": "OFDM处理数字信号", "keyword": "模拟子载波"}
+            {
+                "error_id": "e1",
+                "wrong_text": "需要设置保护频带",
+                "standard_correction": "OFDM的子载波是严格正交的，因此不需要设置传统的保护频带，这正是其能够大幅提升频谱效率的核心原理。",
+                "core_concept": "OFDM正交性原理与频谱效率"
+            },
+            {
+                "error_id": "e2",
+                "wrong_text": "模拟子载波",
+                "standard_correction": "OFDM是数字通信系统的核心技术，它处理并传输的是数字数据流，而非模拟信号。",
+                "core_concept": "数字信号处理基础"
+            }
         ]
     )
     db.add(critique_task)
+
+    critique_task_2 = models.Task(
+        id=2,
+        title="大语言模型(LLM)与AI智能体(Agent)概念辨析",
+        content="当前，大语言模型（LLM）已经等同于AI智能体（Agent）。LLM可以直接通过其内部的参数权重，在软件系统中自主执行如发送邮件、预订机票等复杂任务。此外，智能体的记忆能力是固定的，其记忆系统仅仅依赖于模型预训练时的上下文窗口大小，无法在多轮交互中实现真正的长期记忆跨度。",
+        publish_date=now - timedelta(days=5),
+        deadline=now + timedelta(days=7),
+        preset_errors=[
+            {
+                "error_id": "e1",
+                "wrong_text": "大语言模型（LLM）已经等同于AI智能体（Agent）",
+                "standard_correction": "LLM不等同于Agent。LLM通常只作为Agent的“大脑”提供推理和自然语言处理能力，而一个完整的Agent还需要包含感知模块、记忆模块以及规划和行动（Action/Tool Use）模块。",
+                "core_concept": "LLM与Agent的架构区别"
+            },
+            {
+                "error_id": "e2",
+                "wrong_text": "可以直接通过其内部的参数权重，在软件系统中自主执行",
+                "standard_correction": "单纯的参数权重只能生成文本。要执行现实系统中的任务，Agent必须依赖外部的“工具调用（Tool Calling）”机制或执行器（Actuators）将其生成的指令转化为API请求或物理动作。",
+                "core_concept": "Agent的行动力/工具调用逻辑"
+            },
+            {
+                "error_id": "e3",
+                "wrong_text": "记忆系统仅仅依赖于模型预训练时的上下文窗口大小",
+                "standard_correction": "虽然短期记忆受限于上下文窗口，但现代Agent架构通过外挂向量数据库（Vector Database）或记忆检索增强（RAG）技术，已经能够实现跨会话的、可扩展的长期记忆（Long-term Memory）。",
+                "core_concept": "智能体的长短期记忆机制"
+            }
+        ]
+    )
+    db.add(critique_task_2)
 
     # ==================================================
     # 3. 注入模块二：拓扑构筑任务
