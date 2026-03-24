@@ -49,6 +49,9 @@ class CritiqueSubmission(Base):
     critiques_data = Column(JSON, default=list)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    score = Column(Integer, nullable=True, comment="LLM给出的最终总分")
+    evaluation_report = Column(JSON, nullable=True, comment="LLM返回的详细匹配与打分报告(JSON)")
+
     # 关系映射
     student = relationship("Student", back_populates="critique_submissions")
     task = relationship("Task")

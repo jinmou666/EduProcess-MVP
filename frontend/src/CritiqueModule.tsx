@@ -16,11 +16,29 @@ type TaskData = {
   deadline: string;
 };
 
+// === 1. 追加的类型定义 ===
+type EvaluationDetail = {
+  step1_match: string;
+  step2_score: number;
+  step2_feedback: string;
+};
+
+type EvaluationReport = {
+  total_score: number;
+  overall_feedback: string;
+  details: EvaluationDetail[];
+};
+
+
 const API_BASE = "http://127.0.0.1:8000";
-// 🚨 全局硬编码的学生身份！必须与 init_data.py 中生成的一致
+// 全局硬编码的学生身份！必须与 init_data.py 中生成的一致
 const CURRENT_STUDENT_ID = "20230001";
 
 export default function CritiqueModule() {
+
+  const [score, setScore] = useState<number | null>(null);
+  const [evaluationReport, setEvaluationReport] = useState<EvaluationReport | null>(null);
+  const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
   const [view, setView] = useState<'list' | 'detail'>('list');
   const [tasks, setTasks] = useState<TaskData[]>([]);
   const [task, setTask] = useState<TaskData | null>(null);
@@ -57,25 +75,37 @@ export default function CritiqueModule() {
   };
 
   // 2. 进入具体任务：拉取该学生之前的历史提交数据
+  // 2. 进入具体任务：拉取该学生之前的历史提交数据
   const handleTaskClick = async (selectedTask: TaskData) => {
     setTask(selectedTask);
     setView('detail');
 
-    // 【核心改动：对接后端的 GET /critique/{task_id}/{student_id}】
     try {
       const res = await fetch(`${API_BASE}/critique/${selectedTask.id}/${CURRENT_STUDENT_ID}`);
       if (res.ok) {
         const data = await res.json();
+        // 原有逻辑：设置纠错记录
         setCritiques(data.critiques_data || []);
+
+        // 【新增逻辑】：同步拉取并设置 AI 评估的分数和报告
+        setScore(data.score ?? null);
+        setEvaluationReport(data.evaluation_report ?? null);
       } else if (res.status === 404) {
-        // 如果报 404，说明该学生还没做过这个任务，初始化为空数组
+        // 如果报 404，说明还没做过这个任务
         setCritiques([]);
+
+        // 【新增逻辑】：既然没做过，评估结果也必须清空重置
+        setScore(null);
+        setEvaluationReport(null);
       } else {
         console.error("Failed to load past submission");
       }
     } catch (err) {
       console.error("Network error:", err);
+      // 网络报错时，保险起见也全部清空
       setCritiques([]);
+      setScore(null);
+      setEvaluationReport(null);
     }
   };
 
@@ -150,6 +180,41 @@ export default function CritiqueModule() {
       alert(`保存失败: ${err.message}`);
     }
   };
+
+  const generateEvaluation = async () => {
+    // 防御性校验
+    if (!task?.id) return;
+    if (critiques.length === 0) {
+      alert("当前没有可评估的纠错记录，请先添加内容。");
+      return;
+    }
+
+    setIsEvaluating(true);
+    try {
+      // 注意：这里的 CURRENT_STUDENT_ID 需替换为你代码中实际使用的变量名
+      const response = await fetch(`${API_BASE}/api/tasks/${task.id}/evaluate/${CURRENT_STUDENT_ID}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+
+      const data = await response.json();
+
+      // 更新评估状态，触发 UI 重绘
+      setScore(data.score ?? null);
+      setEvaluationReport(data.evaluation_report ?? null);
+
+    } catch (error) {
+      console.error("Failed to generate evaluation:", error);
+      alert("AI 引擎评估请求失败，请检查网络或后端状态。");
+    } finally {
+      setIsEvaluating(false);
+    }
+  };
+
 
   const renderHighlightedContent = () => {
     if (!task) return null;
@@ -287,6 +352,109 @@ export default function CritiqueModule() {
                </div>
             </div>
           ))}
+          {/* ================= AI 评估入口与结果面板 ================= */}
+          <div className="mt-6 border-t border-gray-200 pt-6">
+            {/* 触发按钮 */}
+            <button
+              onClick={generateEvaluation}
+              disabled={isEvaluating || critiques.length === 0}
+              className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold transition-all shadow-md ${
+                isEvaluating || critiques.length === 0
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none'
+                  : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-lg hover:-translate-y-0.5'
+              }`}
+            >
+              {isEvaluating ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  正在呼叫 AI 引擎进行深度计算...
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                  生成智能评估 (AI Evaluation)
+                </>
+              )}
+            </button>
+
+            {/* 评估结果面板卡片 */}
+            {evaluationReport !== null && (
+              <div className="mt-6 bg-white border border-indigo-100 rounded-2xl shadow-xl overflow-hidden animate-fade-in-up">
+                {/* 卡片头部 */}
+                <div className="bg-gradient-to-r from-indigo-50 to-white px-6 py-5 border-b border-indigo-50 flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-indigo-100 p-2.5 rounded-lg text-indigo-600">
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"></path></svg>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-gray-800">AI 智能诊断报告</h3>
+                      <p className="text-xs text-gray-500 font-medium">Undergraduate Assessment Engine</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-bold text-gray-500 mb-1">Total Score</div>
+                    <div className="text-3xl font-black text-indigo-600 drop-shadow-sm">
+                      {evaluationReport.total_score} <span className="text-base text-gray-400 font-bold">/ 100</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 卡片主体 */}
+                <div className="p-6">
+                  {/* 综合反馈 */}
+                  <div className="mb-6">
+                    <h4 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                      <span className="w-1.5 h-4 bg-indigo-500 rounded-full inline-block"></span>
+                      综合反馈 (Overall Feedback)
+                    </h4>
+                    <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-600 leading-relaxed border border-gray-100">
+                      {evaluationReport.overall_feedback}
+                    </div>
+                  </div>
+
+                  {/* 详细诊断列表 */}
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                      <span className="w-1.5 h-4 bg-indigo-500 rounded-full inline-block"></span>
+                      逻辑推演细节 (Diagnostic Details)
+                    </h4>
+                    <div className="space-y-4">
+                      {evaluationReport.details.map((detail, index) => (
+                        <div key={index} className="bg-white border border-gray-200 rounded-xl p-4 hover:border-indigo-300 transition-colors shadow-sm">
+                          <div className="flex justify-between items-start mb-3">
+                            <span className="bg-indigo-50 text-indigo-700 text-xs font-bold px-2.5 py-1 rounded">
+                              纠错条目 {index + 1}
+                            </span>
+                            <span className={`text-sm font-black ${detail.step2_score >= 80 ? 'text-green-600' : detail.step2_score >= 60 ? 'text-orange-500' : 'text-red-500'}`}>
+                              单项得分: {detail.step2_score}
+                            </span>
+                          </div>
+
+                          <div className="space-y-3">
+                            <div>
+                              <span className="text-xs font-bold text-gray-400 uppercase tracking-wide block mb-1">语义匹配度分析</span>
+                              <p className="text-sm text-gray-700 bg-gray-50 p-2.5 rounded border border-gray-100">
+                                {detail.step1_match}
+                              </p>
+                            </div>
+                            <div>
+                              <span className="text-xs font-bold text-gray-400 uppercase tracking-wide block mb-1">扣分判定与指导</span>
+                              <p className="text-sm text-gray-700 bg-indigo-50/40 p-2.5 rounded border border-indigo-50">
+                                {detail.step2_feedback}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
         <div className="p-4 bg-white border-t">
             <button
@@ -297,6 +465,8 @@ export default function CritiqueModule() {
                 保存此版本
             </button>
         </div>
+
+
       </div>
 
       {isModalOpen && (

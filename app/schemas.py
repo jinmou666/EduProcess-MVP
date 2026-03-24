@@ -45,6 +45,9 @@ class CritiqueSubmissionOut(BaseModel):
     critiques_data: List[Dict[str, Any]]
     updated_at: datetime
 
+    score: Optional[int] = None
+    evaluation_report: Optional[Dict[str, Any]] = None
+
     class Config:
         orm_mode = True
 
