@@ -29,6 +29,11 @@ type EvaluationReport = {
   details: EvaluationDetail[];
 };
 
+type FeedbackMessage = {
+  text: string;
+  type: 'success' | 'error';
+};
+
 
 const API_BASE = "http://127.0.0.1:8000";
 // 全局硬编码的学生身份！必须与 init_data.py 中生成的一致
@@ -45,6 +50,9 @@ export default function CritiqueModule() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [critiques, setCritiques] = useState<Critique[]>([]);
+  const [selectedCritiqueIndex, setSelectedCritiqueIndex] = useState<number | null>(null);
+
+  const [feedbackMessage, setFeedbackMessage] = useState<FeedbackMessage | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [tempSelection, setTempSelection] = useState<{quote: string, start: number, end: number} | null>(null);
@@ -80,23 +88,24 @@ export default function CritiqueModule() {
     setTask(selectedTask);
     setView('detail');
 
+    // 每次进入任务时，评估结果都要求重新生成（不沿用历史评估显示）
+    setScore(null);
+    setEvaluationReport(null);
+
+    // 进入任务时清空选中态
+    setSelectedCritiqueIndex(null);
+
     try {
       const res = await fetch(`${API_BASE}/critique/${selectedTask.id}/${CURRENT_STUDENT_ID}`);
       if (res.ok) {
         const data = await res.json();
         // 原有逻辑：设置纠错记录
         setCritiques(data.critiques_data || []);
-
-        // 【新增逻辑】：同步拉取并设置 AI 评估的分数和报告
-        setScore(data.score ?? null);
-        setEvaluationReport(data.evaluation_report ?? null);
+        setSelectedCritiqueIndex(null);
       } else if (res.status === 404) {
         // 如果报 404，说明还没做过这个任务
         setCritiques([]);
-
-        // 【新增逻辑】：既然没做过，评估结果也必须清空重置
-        setScore(null);
-        setEvaluationReport(null);
+        setSelectedCritiqueIndex(null);
       } else {
         console.error("Failed to load past submission");
       }
@@ -153,8 +162,16 @@ export default function CritiqueModule() {
         return [...filtered, newCritique].sort((a, b) => a.selection_range[0] - b.selection_range[0]);
     });
 
+    // 新增/覆盖纠错后取消旧选中（避免索引错位）
+    setSelectedCritiqueIndex(null);
+
     setIsModalOpen(false);
     window.getSelection()?.removeAllRanges();
+  };
+
+  const deleteCritique = (index: number) => {
+    setCritiques(prev => prev.filter((_, i) => i !== index));
+    setSelectedCritiqueIndex(prev => (prev === index ? null : prev));
   };
 
   // 3. 提交数据：快照覆写模式
@@ -169,15 +186,18 @@ export default function CritiqueModule() {
         })
       });
 
-      if (!res.ok) {
-         const errData = await res.json();
-         throw new Error(errData.detail || "提交失败");
-      }
+       if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.detail || "提交失败");
+       }
 
-      alert(`保存成功！这属于全量快照覆盖。`);
-      setView('list');
-    } catch (err: any) {
-      alert(`保存失败: ${err.message}`);
+       setFeedbackMessage({ text: "提交成功", type: 'success' });
+       setTimeout(() => setFeedbackMessage(null), 2000);
+       // 提交成功后保持在当前任务详情页
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "提交失败，请检查网络连接。";
+      setFeedbackMessage({ text: err instanceof Error ? `提交失败: ${message}` : message, type: 'error' });
+      setTimeout(() => setFeedbackMessage(null), 4000);
     }
   };
 
@@ -253,6 +273,18 @@ export default function CritiqueModule() {
   if (view === 'list') {
     return (
       <div className="h-full overflow-y-auto bg-gray-100 p-8">
+        {/* 全局 Toast 反馈 UI（与知识拓扑模块提示风格对齐） */}
+        {feedbackMessage && (
+          <div
+            className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-6 py-3 rounded shadow-xl text-sm font-medium animate-fade-in-down ${
+              feedbackMessage.type === 'success'
+                ? 'bg-green-100 text-green-800 border border-green-300'
+                : 'bg-red-100 text-red-800 border border-red-300'
+            }`}
+          >
+            {feedbackMessage.text}
+          </div>
+        )}
         <div className="max-w-4xl mx-auto">
           <h2 className="text-3xl font-bold text-gray-800 mb-8">待完成的批判任务</h2>
 
@@ -298,6 +330,18 @@ export default function CritiqueModule() {
 
   return (
     <div className="flex h-full overflow-hidden relative">
+      {/* 全局 Toast 反馈 UI（与知识拓扑模块提示风格对齐） */}
+      {feedbackMessage && (
+        <div
+          className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-6 py-3 rounded shadow-xl text-sm font-medium animate-fade-in-down ${
+            feedbackMessage.type === 'success'
+              ? 'bg-green-100 text-green-800 border border-green-300'
+              : 'bg-red-100 text-red-800 border border-red-300'
+          }`}
+        >
+          {feedbackMessage.text}
+        </div>
+      )}
       <div className="absolute top-4 left-4 z-10">
         <button
           onClick={() => setView('list')}
@@ -340,9 +384,30 @@ export default function CritiqueModule() {
             </div>
           )}
           {critiques.map((item, idx) => (
-            <div key={idx} className="bg-white p-4 rounded-lg shadow-sm text-sm border hover:border-indigo-300 transition-colors">
-               <div className="mb-2 text-gray-500 line-through text-xs bg-red-50 p-2 rounded">
-                 "{item.quote}"
+            <div
+              key={idx}
+              onClick={() => setSelectedCritiqueIndex(idx)}
+              className={`bg-white p-4 rounded-lg shadow-sm text-sm border transition-colors cursor-pointer ${
+                selectedCritiqueIndex === idx
+                  ? 'border-indigo-400 ring-2 ring-indigo-100'
+                  : 'hover:border-indigo-300'
+              }`}
+            >
+               <div className="flex items-start justify-between gap-3 mb-2">
+                 <div className="text-gray-500 line-through text-xs bg-red-50 p-2 rounded flex-1">
+                   "{item.quote}"
+                 </div>
+                 <button
+                   type="button"
+                   onClick={(e) => {
+                     e.stopPropagation();
+                     deleteCritique(idx);
+                   }}
+                   className="shrink-0 px-3 py-1.5 text-xs font-bold rounded-lg border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 hover:border-red-300 transition-colors"
+                   aria-label="删除该条纠错记录"
+                 >
+                   删除
+                 </button>
                </div>
                <div className="font-medium text-green-700 mb-2">
                  👉 {item.rewrite}

@@ -84,7 +84,6 @@ export default function AuthenticityModule() {
   // 别忘了把 Feedback UI 也引进来（如果你在上一步没加的话）
   const [feedbackMessage, setFeedbackMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  const [selectedTools, setSelectedTools] = useState<string[]>([]);
   const [reflectionText, setReflectionText] = useState<string>('');
 
   const [iterations, setIterations] = useState<Iteration[]>(MOCK_ITERATIONS);
@@ -131,8 +130,7 @@ export default function AuthenticityModule() {
               stageName: stage.stageName || "未知阶段",
               humanPercent: stage.humanPercent || 0,
               aiPercent: stage.aiPercent || 0,
-              // 后端的 tools_used 是全局的，前端 UI 是每个 stage 渲染的，这里做兼容注入
-              tools: item.tools_used || []
+              tools: Array.isArray(stage.tools) ? stage.tools : []
             }))
           };
         });
@@ -179,11 +177,11 @@ export default function AuthenticityModule() {
 
       const payload = {
         deliverable_payload: deliverableUrl || "未提供链接",
-        // 核心动作：后端 CollaborationStage 不接受 tools 字段，必须在这里把它剥离掉，否则报错 422
         collaboration_matrix: collaborationMatrix.map(stage => ({
           stageName: stage.stageName,
           humanPercent: stage.humanPercent,
-          aiPercent: stage.aiPercent
+          aiPercent: stage.aiPercent,
+          tools: stage.tools
         })),
         tools_used: globalTools,
         reflection_log: reflectionText
@@ -204,12 +202,11 @@ export default function AuthenticityModule() {
       // 重置所有表单状态为出厂设置
       setDeliverableUrl('');
       setCollaborationMatrix([
-        { stageName: '① 资料检索与破冰', humanPercent: 50, aiPercent: 50 },
-        { stageName: '② 框架与逻辑构建', humanPercent: 50, aiPercent: 50 },
-        { stageName: '③ 内容生成与开发', humanPercent: 50, aiPercent: 50 },
-        { stageName: '④ 审阅、纠错与润色', humanPercent: 50, aiPercent: 50 }
+        { stageName: '① 资料检索与破冰', humanPercent: 50, aiPercent: 50, tools: [] },
+        { stageName: '② 框架与逻辑构建', humanPercent: 50, aiPercent: 50, tools: [] },
+        { stageName: '③ 内容生成与开发', humanPercent: 50, aiPercent: 50, tools: [] },
+        { stageName: '④ 审阅、纠错与润色', humanPercent: 50, aiPercent: 50, tools: [] }
       ]);
-      setSelectedTools([]);
       setReflectionText('');
 
       // 关门，刷新

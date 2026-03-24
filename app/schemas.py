@@ -79,6 +79,7 @@ class CollaborationStage(BaseModel):
     stageName: str
     humanPercent: int = Field(ge=0, le=100)
     aiPercent: int = Field(ge=0, le=100)
+    tools: List[str] = Field(default_factory=list)
 
     @validator('aiPercent')
     def check_percent_sum(cls, v, values):
