@@ -57,6 +57,24 @@ class CritiqueSubmission(Base):
     task = relationship("Task")
 
 
+class EvaluationRecord(Base):
+    """统一评分记录表，用于记录成功和失败的评估尝试。"""
+    __tablename__ = "evaluation_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(String, nullable=False, index=True)
+    module_type = Column(String, nullable=False, index=True)
+    target_id = Column(Integer, nullable=False, index=True)
+    status = Column(String, nullable=False, index=True)
+    rubric_version = Column(String, nullable=False)
+    prompt_version = Column(String, nullable=False)
+    model_name = Column(String, nullable=True)
+    input_snapshot_json = Column(JSON, nullable=False, default=dict)
+    result_json = Column(JSON, nullable=True)
+    total_score = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 # ==========================================
 # 模块二：概念拓扑图构筑 (Topology Construction)
 # ==========================================

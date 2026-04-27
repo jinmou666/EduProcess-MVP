@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState, useMemo, useEffect} from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactFlow, {
   MiniMap,
   Controls,
@@ -8,13 +8,12 @@ import ReactFlow, {
   addEdge,
   ReactFlowProvider,
   MarkerType,
-  useReactFlow,
   Panel,
   applyEdgeChanges,
   applyNodeChanges,
-  ConnectionMode // 引入连接模式枚举
+  ConnectionMode
 } from 'reactflow';
-import type { Connection, Edge, Node, ReactFlowInstance, NodeChange, EdgeChange } from 'reactflow';
+import type { Connection, Edge, Node, NodeChange, EdgeChange } from 'reactflow';
 import 'reactflow/dist/style.css';
 
 import MindMapNode from './MindMapNode';
@@ -25,44 +24,15 @@ const STUDENT_ID = "20230001";
 const TASK_ID = 1;
 const API_BASE = "http://127.0.0.1:8000";
 
-// --- 数据清洗 ---
-const transformToSemanticData = (nodes: Node[], edges: Edge[], studentId: string) => {
-  const idToLabelMap: Record<string, string> = {};
-  const concepts: string[] = [];
-
-  nodes.forEach((node) => {
-    const rawLabel = node.data.label || "";
-    const label = rawLabel.trim() === "" ? "未命名节点" : rawLabel;
-    idToLabelMap[node.id] = label;
-    concepts.push(label);
-  });
-
-  const connections = edges
-    .map((edge) => {
-      const sourceLabel = idToLabelMap[edge.source];
-      const targetLabel = idToLabelMap[edge.target];
-      if (!sourceLabel || !targetLabel) return null;
-      const isBiDirectional = edge.data?.isBiDirectional || false;
-      return {
-        source: sourceLabel,
-        target: targetLabel,
-        relation: isBiDirectional ? "bi-directional" : "connects_to"
-      };
-    })
-    .filter((item) => item !== null);
-
-  return {
-    student_id: studentId,
-    concepts: concepts,
-    connections: connections as {source: string, target: string, relation: string}[]
-  };
-};
-
 const initialNodes: Node[] = [
   { id: '1', type: 'mindMap', position: { x: 250, y: 50 }, data: { label: '核心交换机' } },
 ];
 
-const ConceptMapContent = () => {
+type ConceptMapProps = {
+  onBack?: () => void;
+};
+
+const ConceptMapContent = ({ onBack }: ConceptMapProps) => {
 
   const [feedbackMessage, setFeedbackMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
@@ -96,10 +66,6 @@ const ConceptMapContent = () => {
     fetchTopology();
   }, [setNodes, setEdges]);
 
-  const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
-
-  const { toObject } = useReactFlow();
-
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
     [setNodes]
@@ -112,18 +78,21 @@ const ConceptMapContent = () => {
   // --- 彻底修复：连线逻辑 ---
   const onConnect = useCallback(
     (params: Connection) => {
+      if (!params.source || !params.target) return;
+      const source = params.source;
+      const target = params.target;
       if (params.source === params.target) return; // 禁止自连
 
       setEdges((eds) => {
         // 1. 寻找反向边 (B -> A)
         // 注意：这里只看 source 和 target 节点 ID，不看 handle ID
         const inverseEdge = eds.find(
-          (e) => e.source === params.target && e.target === params.source
+          (e) => e.source === target && e.target === source
         );
 
         // 2. 寻找重复边 (防止重复添加)
         const duplicate = eds.find(
-           (e) => e.source === params.source && e.target === params.target
+           (e) => e.source === source && e.target === target
         );
         if (duplicate) return eds;
 
@@ -156,8 +125,11 @@ const ConceptMapContent = () => {
           // 3. 正常创建单向边
           // 关键点：必须透传 sourceHandle 和 targetHandle，否则线会乱跳！
           const newEdge: Edge = {
-            ...params,
-            id: `edge_${params.source}_${params.target}`,
+            id: `edge_${source}_${target}`,
+            source,
+            target,
+            sourceHandle: params.sourceHandle,
+            targetHandle: params.targetHandle,
             type: 'smoothstep',
             animated: false,
             style: { stroke: '#64748b', strokeWidth: 2 },
@@ -223,6 +195,17 @@ const ConceptMapContent = () => {
 
   return (
     <div className="flex h-full w-full font-sans relative">
+      {onBack && (
+        <div className="absolute top-4 left-8 z-50">
+          <button
+            type="button"
+            onClick={onBack}
+            className="bg-white px-4 py-2 text-sm font-bold text-gray-600 rounded-lg shadow border hover:text-indigo-600 flex items-center gap-2"
+          >
+            <span>← 返回上一级</span>
+          </button>
+        </div>
+      )}
       <div className="absolute top-4 right-8 z-50 flex gap-3">
           <button
               onClick={onAddNodeBtn}
@@ -264,7 +247,6 @@ const ConceptMapContent = () => {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
-          onInit={setReactFlowInstance}
           nodeTypes={nodeTypes}
           fitView
           deleteKeyCode={['Backspace', 'Delete']}
@@ -287,10 +269,10 @@ const ConceptMapContent = () => {
   );
 };
 
-export default function ConceptMap() {
+export default function ConceptMap({ onBack }: ConceptMapProps) {
   return (
     <ReactFlowProvider>
-      <ConceptMapContent />
+      <ConceptMapContent onBack={onBack} />
     </ReactFlowProvider>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 // --- 类型定义 ---
 type StageData = {
@@ -70,16 +70,29 @@ const STUDENT_ID = "20230001";
 const TASK_ID = 1;
 const API_BASE = "http://127.0.0.1:8000";
 
-export default function AuthenticityModule() {
+type AuthenticityModuleProps = {
+  onBack?: () => void;
+};
+
+type CollaborationStage = {
+  stageName: string;
+  humanPercent: number;
+  aiPercent: number;
+  tools: string[];
+};
+
+const DEFAULT_COLLABORATION_MATRIX: CollaborationStage[] = [
+  { stageName: '① 资料检索与破冰', humanPercent: 50, aiPercent: 50, tools: [] },
+  { stageName: '② 框架与逻辑构建', humanPercent: 50, aiPercent: 50, tools: [] },
+  { stageName: '③ 内容生成与开发', humanPercent: 50, aiPercent: 50, tools: [] },
+  { stageName: '④ 审阅、纠错与润色', humanPercent: 50, aiPercent: 50, tools: [] },
+];
+
+export default function AuthenticityModule({ onBack }: AuthenticityModuleProps) {
       // 多步弹窗表单状态
   const [deliverableUrl, setDeliverableUrl] = useState<string>('');
   // 新增/替换你的 collaborationMatrix 状态定义
-  const [collaborationMatrix, setCollaborationMatrix] = useState([
-    { stageName: '① 资料检索与破冰', humanPercent: 50, aiPercent: 50 , tools: []},
-    { stageName: '② 框架与逻辑构建', humanPercent: 50, aiPercent: 50 , tools: []},
-    { stageName: '③ 内容生成与开发', humanPercent: 50, aiPercent: 50, tools: [] },
-    { stageName: '④ 审阅、纠错与润色', humanPercent: 50, aiPercent: 50 , tools: []}
-  ]);
+  const [collaborationMatrix, setCollaborationMatrix] = useState<CollaborationStage[]>(DEFAULT_COLLABORATION_MATRIX);
 
   // 别忘了把 Feedback UI 也引进来（如果你在上一步没加的话）
   const [feedbackMessage, setFeedbackMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -201,12 +214,7 @@ export default function AuthenticityModule() {
 
       // 重置所有表单状态为出厂设置
       setDeliverableUrl('');
-      setCollaborationMatrix([
-        { stageName: '① 资料检索与破冰', humanPercent: 50, aiPercent: 50, tools: [] },
-        { stageName: '② 框架与逻辑构建', humanPercent: 50, aiPercent: 50, tools: [] },
-        { stageName: '③ 内容生成与开发', humanPercent: 50, aiPercent: 50, tools: [] },
-        { stageName: '④ 审阅、纠错与润色', humanPercent: 50, aiPercent: 50, tools: [] }
-      ]);
+      setCollaborationMatrix(DEFAULT_COLLABORATION_MATRIX);
       setReflectionText('');
 
       // 关门，刷新
@@ -236,6 +244,17 @@ export default function AuthenticityModule() {
 
       {/* 顶部全局悬浮按钮 */}
       <div className="absolute top-6 left-6 z-20">
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="bg-white px-4 py-2 text-sm font-bold text-gray-600 rounded-lg shadow border hover:text-indigo-600 flex items-center gap-2 self-start"
+          >
+            <span>← 返回上一级</span>
+          </button>
+        )}
+      </div>
+      <div className="absolute top-6 left-[calc(60%-15rem)] z-20">
         <button
           onClick={() => setIsContextModalOpen(true)}
           className="bg-white/90 backdrop-blur border-l-4 border-indigo-600 shadow-lg px-5 py-3 rounded-r-xl flex flex-col items-start hover:bg-indigo-50 transition-colors group"

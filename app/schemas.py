@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, root_validator, validator
 from typing import List, Optional, Any, Dict
 from datetime import datetime
 
@@ -28,7 +28,7 @@ class TaskOut(BaseModel):
     content: str
     publish_date: datetime
     deadline: Optional[datetime] = None
-    preset_errors: List[Dict[str, Any]] = []
+    preset_errors: List[Dict[str, Any]] = Field(default_factory=list)
 
     class Config:
         orm_mode = True
@@ -36,6 +36,74 @@ class TaskOut(BaseModel):
 
 class CritiqueSubmissionCreate(BaseModel):
     critiques_data: List[Dict[str, Any]] = Field(default_factory=list, description="黑盒化的全量纠错数组")
+
+
+class CritiqueDimensionScore(BaseModel):
+    key: str
+    score: int = Field(ge=0)
+    max_score: int = Field(ge=0)
+    reason: str = ""
+
+
+class CritiqueEvaluationDetail(BaseModel):
+    error_id: Optional[str] = None
+    matched: bool = False
+    step1_match: str
+    step2_score: int = Field(ge=0, le=100)
+    step2_feedback: str
+
+
+class CritiqueEvaluationReport(BaseModel):
+    rubric_version: str
+    total_score: int = Field(ge=0, le=100)
+    overall_feedback: str
+    dimension_scores: List[CritiqueDimensionScore]
+    details: List[CritiqueEvaluationDetail]
+    missed_error_ids: List[str] = Field(default_factory=list)
+    invalid_critiques: List[Dict[str, Any]] = Field(default_factory=list)
+    improvement_advice: List[str] = Field(default_factory=list)
+
+    @validator("rubric_version")
+    def validate_rubric_version(cls, value):
+        if value != "critique_rubric_v1":
+            raise ValueError("rubric_version must be critique_rubric_v1")
+        return value
+
+    @validator("dimension_scores")
+    def validate_dimension_scores(cls, value):
+        expected_max_scores = {
+            "coverage": 35,
+            "correction_accuracy": 30,
+            "reasoning_quality": 20,
+            "alignment_precision": 10,
+            "noise_control": 5,
+        }
+
+        received = {}
+        for item in value:
+            if item.key not in expected_max_scores:
+                raise ValueError(f"Unsupported dimension key: {item.key}")
+            if item.max_score != expected_max_scores[item.key]:
+                raise ValueError(f"Dimension {item.key} max_score must be {expected_max_scores[item.key]}")
+            if item.score > item.max_score:
+                raise ValueError(f"Dimension {item.key} score cannot exceed max_score")
+            if item.key in received:
+                raise ValueError(f"Duplicate dimension key: {item.key}")
+            received[item.key] = item.score
+
+        if set(received.keys()) != set(expected_max_scores.keys()):
+            raise ValueError("dimension_scores must contain all fixed critique dimensions")
+
+        return value
+
+    @root_validator(skip_on_failure=True)
+    def validate_total_score(cls, values):
+        dimension_scores = values.get("dimension_scores") or []
+        if dimension_scores:
+            dimension_total = sum(item.score for item in dimension_scores)
+            if values.get("total_score") != dimension_total:
+                raise ValueError("total_score must equal the sum of dimension_scores")
+        return values
 
 
 class CritiqueSubmissionOut(BaseModel):

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 // --- 类型定义 ---
 type Critique = {
@@ -39,9 +39,12 @@ const API_BASE = "http://127.0.0.1:8000";
 // 全局硬编码的学生身份！必须与 init_data.py 中生成的一致
 const CURRENT_STUDENT_ID = "20230001";
 
-export default function CritiqueModule() {
+type CritiqueModuleProps = {
+  onBack?: () => void;
+};
 
-  const [score, setScore] = useState<number | null>(null);
+export default function CritiqueModule({ onBack }: CritiqueModuleProps) {
+
   const [evaluationReport, setEvaluationReport] = useState<EvaluationReport | null>(null);
   const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
   const [view, setView] = useState<'list' | 'detail'>('list');
@@ -89,7 +92,6 @@ export default function CritiqueModule() {
     setView('detail');
 
     // 每次进入任务时，评估结果都要求重新生成（不沿用历史评估显示）
-    setScore(null);
     setEvaluationReport(null);
 
     // 进入任务时清空选中态
@@ -113,7 +115,6 @@ export default function CritiqueModule() {
       console.error("Network error:", err);
       // 网络报错时，保险起见也全部清空
       setCritiques([]);
-      setScore(null);
       setEvaluationReport(null);
     }
   };
@@ -224,7 +225,6 @@ export default function CritiqueModule() {
       const data = await response.json();
 
       // 更新评估状态，触发 UI 重绘
-      setScore(data.score ?? null);
       setEvaluationReport(data.evaluation_report ?? null);
 
     } catch (error) {
@@ -272,7 +272,7 @@ export default function CritiqueModule() {
 
   if (view === 'list') {
     return (
-      <div className="h-full overflow-y-auto bg-gray-100 p-8">
+      <div className="h-full overflow-y-auto bg-gray-100 p-8 relative">
         {/* 全局 Toast 反馈 UI（与知识拓扑模块提示风格对齐） */}
         {feedbackMessage && (
           <div
@@ -283,6 +283,17 @@ export default function CritiqueModule() {
             }`}
           >
             {feedbackMessage.text}
+          </div>
+        )}
+        {onBack && (
+          <div className="absolute top-8 left-8 z-10">
+            <button
+              type="button"
+              onClick={onBack}
+              className="bg-white px-4 py-2 text-sm font-bold text-gray-600 rounded-lg shadow border hover:text-indigo-600 flex items-center gap-2"
+            >
+              <span>← 返回上一级</span>
+            </button>
           </div>
         )}
         <div className="max-w-4xl mx-auto">
