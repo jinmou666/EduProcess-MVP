@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, root_validator, validator
+from pydantic import BaseModel, ConfigDict, Field, root_validator, validator
 from typing import List, Optional, Any, Dict
 from datetime import datetime
 
@@ -14,8 +14,7 @@ class StudentBase(BaseModel):
 class StudentOut(StudentBase):
     created_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ==========================================
@@ -30,8 +29,7 @@ class TaskOut(BaseModel):
     deadline: Optional[datetime] = None
     preset_errors: List[Dict[str, Any]] = Field(default_factory=list)
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CritiqueSubmissionCreate(BaseModel):
@@ -116,8 +114,7 @@ class CritiqueSubmissionOut(BaseModel):
     score: Optional[int] = None
     evaluation_report: Optional[Dict[str, Any]] = None
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ==========================================
@@ -136,8 +133,7 @@ class TopologySubmissionOut(BaseModel):
     adjacency_list: List[Dict[str, Any]]
     last_saved_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ==========================================
@@ -174,5 +170,103 @@ class AuthenticityIterationOut(BaseModel):
     tools_used: List[str]
     reflection_log: str
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ==========================================
+# 模块三：真实性任务评分 (Authenticity Evaluation)
+# ==========================================
+class AuthenticityDimensionScore(BaseModel):
+    key: str
+    score: int = Field(ge=0)
+    max_score: int = Field(ge=0)
+    reason: str = ""
+
+
+class AuthenticityEvaluationReport(BaseModel):
+    rubric_version: str
+    total_score: int = Field(ge=0, le=100)
+    overall_feedback: str
+    dimension_scores: List[AuthenticityDimensionScore]
+    improvement_advice: List[str] = Field(default_factory=list)
+
+    @validator("rubric_version")
+    def validate_rubric_version(cls, value):
+        if value != "authenticity_rubric_v1":
+            raise ValueError("rubric_version must be authenticity_rubric_v1")
+        return value
+
+    @validator("dimension_scores")
+    def validate_dimension_scores(cls, value):
+        expected = {
+            "iteration_evidence": 20,
+            "process_transparency": 25,
+            "critical_engagement": 25,
+            "reflection_quality": 20,
+            "ai_collab_literacy": 10,
+        }
+        received = {}
+        for item in value:
+            if item.key not in expected:
+                raise ValueError(f"Unsupported dimension key: {item.key}")
+            if item.max_score != expected[item.key]:
+                raise ValueError(f"{item.key} max_score must be {expected[item.key]}")
+            if item.score > item.max_score:
+                raise ValueError(f"{item.key} score cannot exceed max_score")
+            if item.key in received:
+                raise ValueError(f"Duplicate dimension key: {item.key}")
+            received[item.key] = item.score
+        if set(received.keys()) != set(expected.keys()):
+            raise ValueError("dimension_scores must contain all 5 authenticity dimensions")
+        return value
+
+    @root_validator(skip_on_failure=True)
+    def validate_total_score(cls, values):
+        dimension_scores = values.get("dimension_scores") or []
+        if dimension_scores:
+            total = sum(item.score for item in dimension_scores)
+            if values.get("total_score") != total:
+                raise ValueError("total_score must equal sum of dimension_scores")
+        return values
+
+
+# ==========================================
+# 仪表盘聚合 (Dashboard)
+# ==========================================
+class DashboardCritiqueTaskStatus(BaseModel):
+    task_id: int
+    task_title: str
+    status: str
+    total_score: Optional[int] = None
+    evaluated_at: Optional[datetime] = None
+
+
+class DashboardAuthenticityTaskStatus(BaseModel):
+    task_id: int
+    task_title: str
+    status: str
+    iteration_count: int = 0
+    iteration_hint: str = ""
+    total_score: Optional[int] = None
+    evaluated_at: Optional[datetime] = None
+
+
+class DashboardModuleScore(BaseModel):
+    status: str
+    total_score: Optional[int] = None
+    dimension_scores: List[Dict[str, Any]] = Field(default_factory=list)
+    improvement_advice: List[str] = Field(default_factory=list)
+    evaluated_at: Optional[datetime] = None
+
+
+class DashboardResponse(BaseModel):
+    student_id: str
+    student_name: str
+    composite_score: Optional[int] = None
+    critique_weight: float = 0.4
+    authenticity_weight: float = 0.6
+    critique: DashboardModuleScore
+    critique_tasks: List[DashboardCritiqueTaskStatus] = Field(default_factory=list)
+    authenticity: DashboardModuleScore
+    authenticity_tasks: List[DashboardAuthenticityTaskStatus] = Field(default_factory=list)
+    concept_status: str = "not_started"

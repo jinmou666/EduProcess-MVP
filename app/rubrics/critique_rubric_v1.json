@@ -1,0 +1,97 @@
+{
+  "version": "critique_rubric_v1",
+  "module_type": "critique",
+  "scoring_target": "Assess whether the student identified and corrected preset errors, not whether the full passage is stylistically good.",
+  "dimensions": [
+    {
+      "key": "coverage",
+      "max_score": 35,
+      "description": "How completely the submission covers teacher preset errors.",
+      "bands": {
+        "high": "All preset errors identified: 32-35.",
+        "medium": "One preset error missed: 20-31.",
+        "low": "Two or more preset errors missed: 0-19."
+      }
+    },
+    {
+      "key": "correction_accuracy",
+      "max_score": 30,
+      "description": "Whether rewrite accurately corrects the error without introducing a new error.",
+      "bands": {
+        "high": "Correction is accurate and high quality: 26-30.",
+        "medium": "Direction is correct but not precise enough: 16-25.",
+        "low": "Incorrect correction, off-topic, or introduces new errors: 0-15."
+      }
+    },
+    {
+      "key": "reasoning_quality",
+      "max_score": 20,
+      "description": "Whether citation explains why the original text is wrong and what principle is correct.",
+      "bands": {
+        "high": "Includes principle-based explanation: 17-20.",
+        "medium": "Surface-level explanation: 9-16.",
+        "low": "Vague, unsupported, or missing explanation: 0-8."
+      }
+    },
+    {
+      "key": "alignment_precision",
+      "max_score": 10,
+      "description": "Whether quote or selection_range pinpoints the wrong fragment precisely.",
+      "bands": {
+        "high": "Precise localization: 9-10.",
+        "medium": "Basically aligned: 5-8.",
+        "low": "Misaligned, overly broad, or wrong span: 0-4."
+      }
+    },
+    {
+      "key": "noise_control",
+      "max_score": 5,
+      "description": "Whether the submission avoids duplicates, invalid critiques, and fake errors.",
+      "bands": {
+        "high": "No noise: 5.",
+        "medium": "One minor issue: 3-4.",
+        "low": "Multiple duplicates or invalid critiques: 0-2."
+      }
+    }
+  ],
+  "forced_rules": [
+    "Each student critique can match at most one preset_error.",
+    "Each preset_error can only be counted once, using the highest quality matching critique.",
+    "Extra invalid critiques do not add score and must be listed in invalid_critiques.",
+    "If citation is empty, reasoning_quality must not exceed 8."
+  ],
+  "output_contract": {
+    "rubric_version": "critique_rubric_v1",
+    "total_score": "integer 0-100",
+    "overall_feedback": "string",
+    "dimension_scores": [
+      {
+        "key": "coverage|correction_accuracy|reasoning_quality|alignment_precision|noise_control",
+        "score": "integer",
+        "max_score": "integer",
+        "reason": "string"
+      }
+    ],
+    "details": [
+      {
+        "error_id": "string or null",
+        "matched": "boolean",
+        "step1_match": "string",
+        "step2_score": "integer 0-100",
+        "step2_feedback": "string"
+      }
+    ],
+    "missed_error_ids": [
+      "string"
+    ],
+    "invalid_critiques": [
+      {
+        "critique_index": "integer",
+        "reason": "string"
+      }
+    ],
+    "improvement_advice": [
+      "string"
+    ]
+  }
+}

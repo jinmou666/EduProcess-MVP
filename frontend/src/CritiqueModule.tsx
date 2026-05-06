@@ -1,5 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 
+const CRITIQUE_DIMENSION_LABELS: Record<string, string> = {
+  coverage: '覆盖度',
+  correction_accuracy: '准确度',
+  reasoning_quality: '推理质量',
+  alignment_precision: '对齐精度',
+  noise_control: '控噪能力',
+};
+
 // --- 类型定义 ---
 type Critique = {
   quote: string;
@@ -18,15 +26,28 @@ type TaskData = {
 
 // === 1. 追加的类型定义 ===
 type EvaluationDetail = {
+  error_id?: string;
+  matched?: boolean;
   step1_match: string;
   step2_score: number;
   step2_feedback: string;
+};
+
+type DimensionScore = {
+  key: string;
+  score: number;
+  max_score: number;
+  reason: string;
 };
 
 type EvaluationReport = {
   total_score: number;
   overall_feedback: string;
   details: EvaluationDetail[];
+  dimension_scores: DimensionScore[];
+  improvement_advice: string[];
+  missed_error_ids: string[];
+  invalid_critiques: { critique_index: number; quote: string; reason: string }[];
 };
 
 type FeedbackMessage = {
@@ -252,7 +273,7 @@ export default function CritiqueModule({ onBack }: CritiqueModuleProps) {
       elements.push(
         <mark
             key={`mark-${idx}`}
-            className="bg-yellow-200 text-gray-900 px-1 rounded cursor-pointer border-b-2 border-red-400"
+            className="bg-amber-200 text-slate-900 px-1 rounded cursor-pointer border-b-2 border-rose-400"
             title={`修正: ${critique.rewrite}`}
         >
           {text.slice(start, end)}
@@ -267,67 +288,65 @@ export default function CritiqueModule({ onBack }: CritiqueModuleProps) {
     return elements;
   };
 
-  if (loading) return <div className="p-8 text-center text-gray-500">正在加载数据...</div>;
-  if (error) return <div className="p-8 text-center text-red-500">错误: {error}</div>;
+if (loading) return <div className="p-8 text-center text-slate-500">正在加载数据...</div>;
+  if (error) return <div className="p-8 text-center text-rose-500">错误: {error}</div>;
 
   if (view === 'list') {
     return (
-      <div className="h-full overflow-y-auto bg-gray-100 p-8 relative">
-        {/* 全局 Toast 反馈 UI（与知识拓扑模块提示风格对齐） */}
+      <div className="h-full overflow-y-auto bg-slate-50 p-8 relative">
         {feedbackMessage && (
           <div
-            className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-6 py-3 rounded shadow-xl text-sm font-medium animate-fade-in-down ${
+            className={`fixed top-10 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-md shadow-lg text-sm font-medium border ${
               feedbackMessage.type === 'success'
-                ? 'bg-green-100 text-green-800 border border-green-300'
-                : 'bg-red-100 text-red-800 border border-red-300'
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                : 'bg-rose-50 text-rose-800 border-rose-200'
             }`}
           >
             {feedbackMessage.text}
           </div>
         )}
         {onBack && (
-          <div className="absolute top-8 left-8 z-10">
-            <button
-              type="button"
-              onClick={onBack}
-              className="bg-white px-4 py-2 text-sm font-bold text-gray-600 rounded-lg shadow border hover:text-indigo-600 flex items-center gap-2"
-            >
-              <span>← 返回上一级</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onBack}
+            className="text-slate-500 hover:text-slate-900 transition-colors text-sm font-medium flex items-center gap-1 mb-6"
+          >
+            ← 返回
+          </button>
         )}
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-3xl font-bold text-gray-800 mb-8">待完成的批判任务</h2>
+          <h2 className="text-lg font-semibold text-slate-800 mb-2">待完成的批判任务</h2>
+          <p className="text-sm text-slate-500 mb-8">Critique Tasks</p>
 
           {tasks.length === 0 ? (
-            <div className="text-center text-gray-500 py-10">暂无任务数据，请运行后端初始化脚本</div>
+            <div className="text-center text-slate-400 py-10">暂无任务数据，请运行后端初始化脚本</div>
           ) : (
             <div className="space-y-4">
               {tasks.map((t, index) => (
                 <div
                   key={t.id}
                   onClick={() => handleTaskClick(t)}
-                  className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 cursor-pointer hover:border-indigo-500 hover:shadow-md transition-all duration-200 group"
+                  className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 cursor-pointer hover:border-blue-400 hover:shadow-md transition-all duration-200 group"
                 >
                   <div className="flex justify-between items-center mb-3">
-                    <span className="text-sm font-bold text-gray-400 uppercase tracking-wider">
+                    <span className="text-xs font-medium uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
                       Task {index + 1}
                     </span>
-                    <span className="text-xs px-3 py-1 bg-indigo-50 text-indigo-700 font-medium rounded-full">
-                      去纠错 →
+                    <span className="text-xs font-medium text-slate-500 group-hover:text-blue-600 transition-colors">
+                      进入纠错 →
                     </span>
                   </div>
-                  <h3 className="text-xl font-bold text-gray-800 mb-4 group-hover:text-indigo-600 transition-colors">
+                  <h3 className="text-lg font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">
                     {t.title}
                   </h3>
-                  <div className="flex gap-6 text-sm text-gray-500">
+                  <div className="flex gap-6 text-sm text-slate-500 mt-3">
                     <div className="flex items-center gap-1">
-                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                      <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                       发布: {formatDate(t.publish_date)}
                     </div>
                     <div className="flex items-center gap-1">
-                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                      截止: <span className="text-red-500 font-medium">{formatDate(t.deadline)}</span>
+                      <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                      截止: <span className="text-rose-500 font-medium">{formatDate(t.deadline)}</span>
                     </div>
                   </div>
                 </div>
@@ -339,58 +358,57 @@ export default function CritiqueModule({ onBack }: CritiqueModuleProps) {
     );
   }
 
-  return (
-    <div className="flex h-full overflow-hidden relative">
-      {/* 全局 Toast 反馈 UI（与知识拓扑模块提示风格对齐） */}
+return (
+    <div className="flex h-full overflow-hidden relative bg-slate-50">
       {feedbackMessage && (
         <div
-          className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-6 py-3 rounded shadow-xl text-sm font-medium animate-fade-in-down ${
+          className={`fixed top-10 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-md shadow-lg text-sm font-medium border ${
             feedbackMessage.type === 'success'
-              ? 'bg-green-100 text-green-800 border border-green-300'
-              : 'bg-red-100 text-red-800 border border-red-300'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              : 'bg-rose-50 text-rose-800 border-rose-200'
           }`}
         >
           {feedbackMessage.text}
         </div>
       )}
-      <div className="absolute top-4 left-4 z-10">
+      <div className="absolute top-6 left-6 z-10">
         <button
           onClick={() => setView('list')}
-          className="bg-white px-4 py-2 text-sm font-bold text-gray-600 rounded-lg shadow border hover:text-indigo-600 flex items-center gap-2"
+          className="text-slate-500 hover:text-slate-900 transition-colors text-sm font-medium flex items-center gap-1"
         >
-          <span>← 返回列表</span>
+          ← 返回列表
         </button>
       </div>
 
-      <div className="w-2/3 pt-20 px-10 pb-10 overflow-y-auto bg-white border-r">
+      <div className="w-2/3 pt-20 px-10 pb-10 overflow-y-auto bg-white border-r border-slate-200">
         <div className="flex justify-between items-end mb-6">
-          <h2 className="text-3xl font-bold">{task?.title}</h2>
-          <div className="text-sm text-gray-400 text-right">
+          <h2 className="text-lg font-semibold text-slate-800">{task?.title}</h2>
+          <div className="text-sm text-slate-500 text-right">
             <div>发布: {formatDate(task?.publish_date || '')}</div>
-            <div className="text-red-400">截止: {formatDate(task?.deadline || '')}</div>
+            <div className="text-rose-500">截止: {formatDate(task?.deadline || '')}</div>
           </div>
         </div>
 
         <div
           id="content-area-react"
-          className="bg-gray-50 p-8 rounded-xl leading-loose text-lg border border-gray-200 relative whitespace-pre-wrap text-gray-800 shadow-inner"
+          className="bg-slate-50 p-8 rounded-xl leading-loose text-lg border border-slate-200 relative whitespace-pre-wrap text-slate-800"
           onMouseUp={handleMouseUp}
         >
           {renderHighlightedContent()}
         </div>
-        <p className="mt-4 text-sm text-gray-400 font-medium">* 鼠标拖拽选中文本进行纠错，重叠区域会自动覆盖。</p>
+        <p className="mt-4 text-sm text-slate-400 font-medium">* 鼠标拖拽选中文本进行纠错，重叠区域会自动覆盖。</p>
       </div>
 
-      <div className="w-1/3 bg-gray-50 flex flex-col border-l">
-        <div className="p-4 border-b bg-white font-bold text-gray-700 flex justify-between items-center">
+      <div className="w-1/3 bg-slate-50 flex flex-col border-l border-slate-200">
+        <div className="p-4 border-b border-slate-200 bg-white font-semibold text-slate-800 flex justify-between items-center">
           <span>纠错记录</span>
-          <span className="bg-indigo-100 text-indigo-800 py-0.5 px-2.5 rounded-full text-xs">{critiques.length}</span>
+          <span className="bg-blue-50 text-blue-700 py-0.5 px-2.5 rounded-full text-xs font-bold">{critiques.length}</span>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {critiques.length === 0 && (
-            <div className="text-center text-gray-400 mt-20 flex flex-col items-center">
-              <svg className="w-12 h-12 mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+            <div className="text-center text-slate-400 mt-20 flex flex-col items-center">
+              <svg className="w-12 h-12 mb-3 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
               暂无记录<br/>请在左侧选中文本开始
             </div>
           )}
@@ -398,127 +416,133 @@ export default function CritiqueModule({ onBack }: CritiqueModuleProps) {
             <div
               key={idx}
               onClick={() => setSelectedCritiqueIndex(idx)}
-              className={`bg-white p-4 rounded-lg shadow-sm text-sm border transition-colors cursor-pointer ${
+              className={`bg-white p-4 rounded-xl shadow-sm text-sm border transition-colors cursor-pointer ${
                 selectedCritiqueIndex === idx
-                  ? 'border-indigo-400 ring-2 ring-indigo-100'
-                  : 'hover:border-indigo-300'
+                  ? 'border-blue-400 ring-1 ring-blue-100'
+                  : 'border-slate-200 hover:border-blue-300'
               }`}
             >
                <div className="flex items-start justify-between gap-3 mb-2">
-                 <div className="text-gray-500 line-through text-xs bg-red-50 p-2 rounded flex-1">
-                   "{item.quote}"
-                 </div>
-                 <button
-                   type="button"
-                   onClick={(e) => {
-                     e.stopPropagation();
-                     deleteCritique(idx);
-                   }}
-                   className="shrink-0 px-3 py-1.5 text-xs font-bold rounded-lg border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 hover:border-red-300 transition-colors"
-                   aria-label="删除该条纠错记录"
-                 >
-                   删除
-                 </button>
-               </div>
-               <div className="font-medium text-green-700 mb-2">
-                 👉 {item.rewrite}
-               </div>
-               <div className="text-xs text-gray-400 border-t pt-2 mt-2 flex items-start gap-1">
-                 <span>📚</span> <span className="leading-tight">{item.citation}</span>
-               </div>
+                 <div className="text-slate-500 line-through text-xs bg-rose-50 p-2 rounded flex-1">
+                    {item.quote}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteCritique(idx);
+                    }}
+                    className="shrink-0 px-3 py-1.5 text-xs font-bold rounded-lg border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100 hover:border-rose-300 transition-colors"
+                    aria-label="删除该条纠错记录"
+                  >
+                    删除
+                  </button>
+                </div>
+                <div className="font-medium text-emerald-700 mb-2">
+                  {item.rewrite}
+                </div>
+                <div className="text-xs text-slate-400 border-t border-slate-100 pt-2 mt-2 flex items-start gap-1">
+                  <span className="leading-tight">{item.citation}</span>
+                </div>
             </div>
           ))}
-          {/* ================= AI 评估入口与结果面板 ================= */}
-          <div className="mt-6 border-t border-gray-200 pt-6">
-            {/* 触发按钮 */}
+          <div className="mt-6 border-t border-slate-200 pt-6">
             <button
               onClick={generateEvaluation}
               disabled={isEvaluating || critiques.length === 0}
-              className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold transition-all shadow-md ${
+              className={`w-full inline-flex items-center justify-center gap-2 px-4 py-2 border shadow-sm text-sm font-medium rounded-md transition-colors ${
                 isEvaluating || critiques.length === 0
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none'
-                  : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-lg hover:-translate-y-0.5'
+                  ? 'border-slate-200 text-slate-400 bg-slate-50 cursor-not-allowed'
+                  : 'border-transparent text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
               }`}
             >
               {isEvaluating ? (
                 <>
-                  <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <svg className="animate-spin h-4 w-4 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  正在呼叫 AI 引擎进行深度计算...
+                  正在呼叫 AI 引擎评估...
                 </>
               ) : (
                 <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                  生成智能评估 (AI Evaluation)
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                  生成智能评估
                 </>
               )}
             </button>
 
-            {/* 评估结果面板卡片 */}
             {evaluationReport !== null && (
-              <div className="mt-6 bg-white border border-indigo-100 rounded-2xl shadow-xl overflow-hidden animate-fade-in-up">
-                {/* 卡片头部 */}
-                <div className="bg-gradient-to-r from-indigo-50 to-white px-6 py-5 border-b border-indigo-50 flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-indigo-100 p-2.5 rounded-lg text-indigo-600">
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"></path></svg>
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-black text-gray-800">AI 智能诊断报告</h3>
-                      <p className="text-xs text-gray-500 font-medium">Undergraduate Assessment Engine</p>
-                    </div>
+              <div className="mt-6 border-2 border-blue-500 rounded-xl bg-white shadow-sm overflow-hidden">
+                <div className="bg-blue-600 text-white px-6 py-4 flex justify-between items-center">
+                  <div>
+                    <h3 className="text-sm font-bold">批判性评估报告</h3>
+                    <p className="text-xs text-blue-200 mt-0.5">Critique Assessment</p>
                   </div>
                   <div className="text-right">
-                    <div className="text-sm font-bold text-gray-500 mb-1">Total Score</div>
-                    <div className="text-3xl font-black text-indigo-600 drop-shadow-sm">
-                      {evaluationReport.total_score} <span className="text-base text-gray-400 font-bold">/ 100</span>
-                    </div>
+                    <div className="text-xs text-blue-200">总分</div>
+                    <div className="text-2xl font-bold">{evaluationReport.total_score} <span className="text-sm text-blue-200">/ 100</span></div>
                   </div>
                 </div>
 
-                {/* 卡片主体 */}
                 <div className="p-6">
-                  {/* 综合反馈 */}
                   <div className="mb-6">
-                    <h4 className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                      <span className="w-1.5 h-4 bg-indigo-500 rounded-full inline-block"></span>
-                      综合反馈 (Overall Feedback)
-                    </h4>
-                    <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-600 leading-relaxed border border-gray-100">
+                    <h4 className="text-xs font-medium uppercase tracking-wider text-slate-500 mb-2">综合反馈</h4>
+                    <div className="text-sm leading-relaxed text-slate-600 bg-slate-50 rounded-lg p-4 border border-slate-200">
                       {evaluationReport.overall_feedback}
                     </div>
                   </div>
 
-                  {/* 详细诊断列表 */}
+                  {Array.isArray(evaluationReport.dimension_scores) && evaluationReport.dimension_scores.length > 0 && (
+                    <div className="mb-6">
+                      <h4 className="text-xs font-medium uppercase tracking-wider text-slate-500 mb-3">维度得分</h4>
+                      <div className="space-y-3">
+                        {evaluationReport.dimension_scores.map((dim) => {
+                          const pct = Math.round(((dim.score ?? 0) / (dim.max_score || 1)) * 100);
+                          const color = pct >= 80 ? 'bg-emerald-500' : pct >= 60 ? 'bg-amber-500' : 'bg-rose-500';
+                          return (
+                            <div key={dim.key} className="border border-slate-200 rounded-lg p-4">
+                              <div className="flex justify-between items-center mb-2">
+                                <span className="text-xs font-medium uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{CRITIQUE_DIMENSION_LABELS[dim.key] || dim.key}</span>
+                                <span className={`text-sm font-bold ${pct >= 80 ? 'text-emerald-500' : pct >= 60 ? 'text-amber-500' : 'text-rose-500'}`}>
+                                  {dim.score}/{dim.max_score}
+                                </span>
+                              </div>
+                              <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                                <div className={`h-2 rounded-full ${color} transition-all duration-500`} style={{ width: `${pct}%` }} />
+                              </div>
+                              {dim.reason && dim.reason.trim() && <p className="text-sm text-slate-500 mt-2">{dim.reason}</p>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   <div>
-                    <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-                      <span className="w-1.5 h-4 bg-indigo-500 rounded-full inline-block"></span>
-                      逻辑推演细节 (Diagnostic Details)
-                    </h4>
+                    <h4 className="text-xs font-medium uppercase tracking-wider text-slate-500 mb-3">逻辑推演细节</h4>
                     <div className="space-y-4">
                       {evaluationReport.details.map((detail, index) => (
-                        <div key={index} className="bg-white border border-gray-200 rounded-xl p-4 hover:border-indigo-300 transition-colors shadow-sm">
+                        <div key={index} className="border border-slate-200 rounded-xl p-4 hover:border-blue-300 transition-colors shadow-sm">
                           <div className="flex justify-between items-start mb-3">
-                            <span className="bg-indigo-50 text-indigo-700 text-xs font-bold px-2.5 py-1 rounded">
+                            <span className="bg-blue-50 text-blue-700 text-xs font-bold px-2.5 py-1 rounded">
                               纠错条目 {index + 1}
                             </span>
-                            <span className={`text-sm font-black ${detail.step2_score >= 80 ? 'text-green-600' : detail.step2_score >= 60 ? 'text-orange-500' : 'text-red-500'}`}>
-                              单项得分: {detail.step2_score}
+                            <span className={`text-sm font-bold ${detail.step2_score >= 80 ? 'text-emerald-500' : detail.step2_score >= 60 ? 'text-amber-500' : 'text-rose-500'}`}>
+                              {detail.step2_score}分
                             </span>
                           </div>
 
                           <div className="space-y-3">
                             <div>
-                              <span className="text-xs font-bold text-gray-400 uppercase tracking-wide block mb-1">语义匹配度分析</span>
-                              <p className="text-sm text-gray-700 bg-gray-50 p-2.5 rounded border border-gray-100">
+                              <span className="text-xs font-medium uppercase tracking-wider text-slate-500 block mb-1">语义匹配度分析</span>
+                              <p className="text-sm text-slate-700 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
                                 {detail.step1_match}
                               </p>
                             </div>
                             <div>
-                              <span className="text-xs font-bold text-gray-400 uppercase tracking-wide block mb-1">扣分判定与指导</span>
-                              <p className="text-sm text-gray-700 bg-indigo-50/40 p-2.5 rounded border border-indigo-50">
+                              <span className="text-xs font-medium uppercase tracking-wider text-slate-500 block mb-1">扣分判定与指导</span>
+                              <p className="text-sm text-slate-700 bg-blue-50/40 p-2.5 rounded-lg border border-blue-100">
                                 {detail.step2_feedback}
                               </p>
                             </div>
@@ -527,49 +551,65 @@ export default function CritiqueModule({ onBack }: CritiqueModuleProps) {
                       ))}
                     </div>
                   </div>
+
+                  {Array.isArray(evaluationReport.improvement_advice) && evaluationReport.improvement_advice.length > 0 && (
+                    <div className="mt-6">
+                      <h4 className="text-xs font-medium uppercase tracking-wider text-slate-500 mb-3">改进建议</h4>
+                      <div className="space-y-2">
+                        {evaluationReport.improvement_advice.map((advice, idx) => (
+                          <div key={idx} className="flex items-start gap-2 text-sm text-slate-600">
+                            <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                            <span>{advice}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
           </div>
         </div>
-        <div className="p-4 bg-white border-t">
+        <div className="p-4 bg-white border-t border-slate-200">
             <button
               onClick={submitAssignment}
               disabled={critiques.length === 0}
-              className={`w-full py-3 rounded-lg font-bold shadow transition-colors ${critiques.length > 0 ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+              className={`w-full inline-flex items-center justify-center px-4 py-2 border shadow-sm text-sm font-medium rounded-md transition-colors ${
+                critiques.length > 0
+                  ? 'border-transparent text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
+                  : 'border-slate-200 text-slate-400 bg-slate-50 cursor-not-allowed'
+              }`}
             >
                 保存此版本
             </button>
         </div>
-
-
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
-            <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl transform transition-all">
-                <h3 className="text-xl font-bold mb-4 text-gray-800">添加内容纠错</h3>
-                <div className="bg-red-50 p-3 text-sm text-red-800 mb-4 italic rounded-lg line-clamp-3 border border-red-100">
-                    "{tempSelection?.quote}"
+        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
+            <div className="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl">
+                <h3 className="text-lg font-semibold text-slate-800 mb-4">添加内容纠错</h3>
+                <div className="bg-rose-50 p-3 text-sm text-rose-800 mb-4 italic rounded-lg line-clamp-3 border border-rose-200">
+                    {tempSelection?.quote}
                 </div>
-                <label className="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wide">你的修正</label>
+                <label className="block text-xs font-medium uppercase tracking-wider text-slate-500 mb-1">你的修正</label>
                 <textarea
-                    className="w-full border border-gray-300 p-3 rounded-lg mb-4 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                    className="w-full border border-slate-300 p-3 rounded-md mb-4 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none text-sm"
                     placeholder="请输入正确的内容描述..."
                     rows={4}
                     value={rewriteInput}
                     onChange={e => setRewriteInput(e.target.value)}
                 />
-                <label className="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wide">理论依据 (Citation)</label>
+                <label className="block text-xs font-medium uppercase tracking-wider text-slate-500 mb-1">理论依据 (Citation)</label>
                 <input
-                    className="w-full border border-gray-300 p-3 rounded-lg mb-6 focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full border border-slate-300 p-3 rounded-md mb-6 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
                     placeholder="例如：计算机网络(第7版) P123"
                     value={citationInput}
                     onChange={e => setCitationInput(e.target.value)}
                 />
                 <div className="flex justify-end gap-3">
-                    <button onClick={() => setIsModalOpen(false)} className="px-5 py-2 bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200 transition-colors">取消</button>
-                    <button onClick={saveCritique} className="px-5 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-md">保存记录</button>
+                    <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-medium rounded-md border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 transition-colors">取消</button>
+                    <button onClick={saveCritique} className="px-4 py-2 text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 transition-colors">保存记录</button>
                 </div>
             </div>
         </div>

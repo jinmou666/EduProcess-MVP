@@ -1,0 +1,63 @@
+{
+  "version": "authenticity_rubric_v1",
+  "module_type": "authenticity",
+  "scoring_target": "评估过程是否透明、迭代是否有实质推进、学生是否保持认知主导权。AI使用多不扣分，不会解释为什么这样用才扣分。",
+  "dimensions": [
+    {
+      "key": "iteration_evidence",
+      "max_score": 20,
+      "description": "版本数量与迭代推进的证据充分性",
+      "scoring_method": "规则基础分 + LLM判断版本间差异",
+      "rule_hint": "version_count >= 3 基础分 13, = 2 得 8, = 1 得 3; 超过 5 不继续加分; LLM 判断版本间反思是否有实质变化"
+    },
+    {
+      "key": "process_transparency",
+      "max_score": 25,
+      "description": "协作矩阵完整度、各阶段比例区分度、交付物是否提交",
+      "scoring_method": "规则为主",
+      "rule_hint": "4阶段全有数据 → 10/25; 各阶段比例不是全部50/50 → +5; deliverable_payload非空 → +5; 剩余5分由LLM判断矩阵内容合理性"
+    },
+    {
+      "key": "critical_engagement",
+      "max_score": 25,
+      "description": "反思是否体现人类判断、是否识别AI局限、是否主动修正AI输出",
+      "scoring_method": "LLM为主",
+      "rule_hint": "反思中明确提到修正/推翻AI输出 → 高分; 指出AI局限 → 加分; 只是空话 → 低分"
+    },
+    {
+      "key": "reflection_quality",
+      "max_score": 20,
+      "description": "反思是否涉及具体内容而非空话、是否展示学习发生、是否联系任务要求",
+      "scoring_method": "LLM为主",
+      "rule_hint": "涉及具体修改细节 → 高分; 空话套话 → 低分; 展示认知变化 → 加分"
+    },
+    {
+      "key": "ai_collab_literacy",
+      "max_score": 10,
+      "description": "各阶段人机分工是否合理、是否针对性选择工具",
+      "scoring_method": "混合",
+      "rule_hint": "规划/审核阶段人类占比高 → 合理 → 加分; 各阶段AI>=90%且反思无解释 → 低分; 工具选择有针对性 → 加分"
+    }
+  ],
+  "forced_rules": [
+    "total_score 必须等于各 dimension_scores 之和",
+    "version_count >= 3 时 iteration_evidence 基础分 13, = 2 得 8, = 1 得 3, >=6 封顶16",
+    "reflection_log 为空或不足50字时 reflection_quality 不得超过 5",
+    "各阶段 AI 全部 >= 80% 且反思中无任何对AI使用的解释 → ai_collab_literacy 不得超过 3",
+    "deliverable_payload 为空或为'未提供链接'时 process_transparency 中交付物分数为0"
+  ],
+  "output_contract": {
+    "rubric_version": "authenticity_rubric_v1",
+    "total_score": "integer 0-100",
+    "overall_feedback": "string",
+    "dimension_scores": [
+      {
+        "key": "iteration_evidence|process_transparency|critical_engagement|reflection_quality|ai_collab_literacy",
+        "score": "integer",
+        "max_score": "integer",
+        "reason": "string"
+      }
+    ],
+    "improvement_advice": ["string"]
+  }
+}

@@ -30,7 +30,7 @@ def seed_critique_submission(db, task, student_id, critiques_data, status="succe
         scoring_mode="local",
     )
     submission.score = report.total_score
-    submission.evaluation_report = report.dict()
+    submission.evaluation_report = report.model_dump()
     db.add(submission)
     db.flush()
 
@@ -44,7 +44,7 @@ def seed_critique_submission(db, task, student_id, critiques_data, status="succe
         model_name=metadata["model_name"],
         input_snapshot_json=metadata["input_snapshot"],
         result_json={
-            "report": report.dict(),
+            "report": report.model_dump(),
             "fallback_reason": metadata["fallback_reason"],
         },
         total_score=report.total_score,
@@ -231,6 +231,57 @@ def init_db_data():
         evaluation_criteria="1. 过程透明：严禁一键生成，必须展示至少3次迭代过程。\n2. 人机边界：在数据支撑阶段要求极高的人工审核比例（避免AI幻觉）。\n3. 反思深度：评估你发现并纠正AI错误的能力。"
     )
     db.add(authenticity_task)
+
+    # ==================================================
+    # 5. 注入真实性任务迭代记录（含AI工具选取）
+    # ==================================================
+    auth_iter_1 = models.AuthenticityIteration(
+        task_id=1,
+        student_id="20230001",
+        version_number=1,
+        deliverable_payload="https://docs.google.com/document/d/v1_autonomous_driving_risk",
+        collaboration_matrix=[
+            {"stageName": "① 资料检索与破冰", "humanPercent": 95, "aiPercent": 5, "tools": ["Google Search"]},
+            {"stageName": "② 框架与逻辑构建", "humanPercent": 100, "aiPercent": 0, "tools": []},
+            {"stageName": "③ 内容生成", "humanPercent": 100, "aiPercent": 0, "tools": []},
+            {"stageName": "④ 审阅、纠错与润色", "humanPercent": 100, "aiPercent": 0, "tools": []},
+        ],
+        tools_used=["Google Search"],
+        reflection_log="刚接手任务，完全靠自己理解题目要求，仅使用搜索引擎查阅了专有名词和事故统计数据，制定了初步的三级标题大纲。这个版本主要是搭建框架，确定报告的方向和核心论点：自动驾驶在L3/L4级别落地时面临的长尾场景风险。",
+    )
+    db.add(auth_iter_1)
+
+    auth_iter_2 = models.AuthenticityIteration(
+        task_id=1,
+        student_id="20230001",
+        version_number=2,
+        deliverable_payload="https://docs.google.com/document/d/v2_autonomous_driving_risk",
+        collaboration_matrix=[
+            {"stageName": "① 资料检索与破冰", "humanPercent": 40, "aiPercent": 60, "tools": ["Perplexity", "ChatGPT"]},
+            {"stageName": "② 框架与逻辑构建", "humanPercent": 50, "aiPercent": 50, "tools": ["ChatGPT"]},
+            {"stageName": "③ 内容生成", "humanPercent": 10, "aiPercent": 90, "tools": ["ChatGPT"]},
+            {"stageName": "④ 审阅、纠错与润色", "humanPercent": 10, "aiPercent": 90, "tools": ["ChatGPT"]},
+        ],
+        tools_used=["Perplexity", "ChatGPT"],
+        reflection_log="基于V1的框架，完全交由AI进行正文填充。使用Perplexity检索了大量行业研报和数据，然后利用ChatGPT生成初稿。发现AI在细节论证上存在明显的幻觉——凭空捏造了几个数据，但我暂时保留以观后效。框架结构尚可，但需要人工审核修正。",
+    )
+    db.add(auth_iter_2)
+
+    auth_iter_3 = models.AuthenticityIteration(
+        task_id=1,
+        student_id="20230001",
+        version_number=3,
+        deliverable_payload="https://github.com/stu/project/commit/v3",
+        collaboration_matrix=[
+            {"stageName": "① 资料检索与破冰", "humanPercent": 80, "aiPercent": 20, "tools": ["Google Search", "Perplexity"]},
+            {"stageName": "② 框架与逻辑构建", "humanPercent": 90, "aiPercent": 10, "tools": ["Notion AI"]},
+            {"stageName": "③ 内容生成", "humanPercent": 40, "aiPercent": 60, "tools": ["Claude 3.5", "ChatGPT"]},
+            {"stageName": "④ 审阅、纠错与润色", "humanPercent": 70, "aiPercent": 30, "tools": ["ChatGPT"]},
+        ],
+        tools_used=["Google Search", "Perplexity", "Notion AI", "Claude 3.5", "ChatGPT"],
+        reflection_log="推翻了AI在V2版本中生成的过于理想化的市场预估模型。我手动引入了最新的行业研报数据限制其边界，并引导AI重新生成了风险评估段落。Claude 3.5在逻辑分析方面表现不错，而ChatGPT在文字润色上更为流畅。整体比V2提升了显著的人机协作质量。",
+    )
+    db.add(auth_iter_3)
 
     # 提交所有数据
     db.commit()

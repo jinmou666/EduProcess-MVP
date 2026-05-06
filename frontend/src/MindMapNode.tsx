@@ -21,10 +21,10 @@ export default function MindMapNode({ id, data, selected }: NodeProps) {
   }, [id, setNodes]);
 
   // 选中样式
-  const borderClass = selected ? "border-indigo-500 ring-2 ring-indigo-200" : "border-stone-400";
+  const borderClass = selected ? "border-blue-500 ring-2 ring-blue-100" : "border-slate-400";
 
   // Handle 样式：大一点，容易点中
-  const handleStyle = { width: '10px', height: '10px', background: '#78716c' };
+  const handleStyle = { width: '10px', height: '10px', background: '#94a3b8' };
 
   return (
     <div className={`relative group shadow-md rounded-md bg-white border-2 min-w-[150px] transition-all ${borderClass}`}>
@@ -35,22 +35,22 @@ export default function MindMapNode({ id, data, selected }: NodeProps) {
       */}
 
       {/* 上 */}
-      <Handle type="source" position={Position.Top} id="top" style={handleStyle} className="hover:!bg-indigo-500" />
+      <Handle type="source" position={Position.Top} id="top" style={handleStyle} className="hover:!bg-blue-500" />
 
       {/* 右 */}
-      <Handle type="source" position={Position.Right} id="right" style={handleStyle} className="hover:!bg-indigo-500" />
+      <Handle type="source" position={Position.Right} id="right" style={handleStyle} className="hover:!bg-blue-500" />
 
       {/* 下 */}
-      <Handle type="source" position={Position.Bottom} id="bottom" style={handleStyle} className="hover:!bg-indigo-500" />
+      <Handle type="source" position={Position.Bottom} id="bottom" style={handleStyle} className="hover:!bg-blue-500" />
 
       {/* 左 */}
-      <Handle type="source" position={Position.Left} id="left" style={handleStyle} className="hover:!bg-indigo-500" />
+      <Handle type="source" position={Position.Left} id="left" style={handleStyle} className="hover:!bg-blue-500" />
 
       <div className="flex items-center p-3">
         <input
           value={data.label}
           onChange={onChange}
-          className="nodrag text-center w-full text-sm font-bold text-gray-700 outline-none bg-transparent cursor-text"
+          className="nodrag text-center w-full text-sm font-semibold text-slate-700 outline-none bg-transparent cursor-text"
           placeholder="输入名称"
         />
       </div>

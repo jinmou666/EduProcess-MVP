@@ -180,67 +180,66 @@ const ConceptMapContent = ({ onBack }: ConceptMapProps) => {
       if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
 
       // === 核心修改区 ===
-      setFeedbackMessage({ text: "✅ 拓扑图保存成功！", type: 'success' });
+      setFeedbackMessage({ text: "拓扑图保存成功", type: 'success' });
       // 3秒后自动清除提示
       setTimeout(() => setFeedbackMessage(null), 3000);
 
     } catch (error) {
       console.error("Failed to save topology:", error);
       // === 核心修改区 ===
-      setFeedbackMessage({ text: "❌ 保存失败，请检查网络连接。", type: 'error' });
+      setFeedbackMessage({ text: "保存失败，请检查网络连接", type: 'error' });
       setTimeout(() => setFeedbackMessage(null), 4000);
     }
   };
 
 
   return (
-    <div className="flex h-full w-full font-sans relative">
+<div className="flex h-full w-full font-sans relative bg-slate-50">
       {onBack && (
-        <div className="absolute top-4 left-8 z-50">
+        <div className="absolute top-6 left-6 z-50">
           <button
             type="button"
             onClick={onBack}
-            className="bg-white px-4 py-2 text-sm font-bold text-gray-600 rounded-lg shadow border hover:text-indigo-600 flex items-center gap-2"
+            className="text-slate-500 hover:text-slate-900 transition-colors text-sm font-medium flex items-center gap-1"
           >
-            <span>← 返回上一级</span>
+            ← 返回
           </button>
         </div>
       )}
-      <div className="absolute top-4 right-8 z-50 flex gap-3">
+      <div className="absolute top-6 right-8 z-50 flex gap-3">
           <button
               onClick={onAddNodeBtn}
-              className="px-4 py-2 bg-green-600 text-white text-sm font-bold rounded shadow-lg hover:bg-green-700 transition"
+              className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
           >
               + 添加节点
           </button>
           <button
               onClick={onDeleteSelected}
-              className="px-4 py-2 bg-red-500 text-white text-sm font-bold rounded shadow-lg hover:bg-red-600 transition"
+              className="inline-flex items-center justify-center px-4 py-2 border border-slate-300 shadow-sm text-sm font-medium rounded-md text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
           >
-              删除选中 (Delete)
+              删除选中
           </button>
           <button
               onClick={submitTopology}
-              className="px-4 py-2 bg-indigo-600 text-white text-sm font-bold rounded shadow-lg hover:bg-indigo-700 transition"
+              className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-emerald-500 hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
           >
               提交作业
           </button>
       </div>
 
-      {/* 新增：全局 Toast 反馈 UI */}
       {feedbackMessage && (
         <div
-          className={`absolute top-4 left-1/2 transform -translate-x-1/2 z-50 px-6 py-3 rounded shadow-xl text-sm font-medium animate-fade-in-down ${
+          className={`absolute top-10 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-md shadow-lg text-sm font-medium border ${
             feedbackMessage.type === 'success'
-              ? 'bg-green-100 text-green-800 border border-green-300'
-              : 'bg-red-100 text-red-800 border border-red-300'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              : 'bg-rose-50 text-rose-800 border-rose-200'
           }`}
         >
           {feedbackMessage.text}
         </div>
       )}
 
-      <div className="flex-grow h-full w-full bg-gray-50 relative" ref={reactFlowWrapper}>
+      <div className="flex-grow h-full w-full bg-slate-50 relative" ref={reactFlowWrapper}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -259,7 +258,7 @@ const ConceptMapContent = ({ onBack }: ConceptMapProps) => {
           <MiniMap style={{ height: 100 }} zoomable pannable position="bottom-right" />
           <Background gap={20} size={1} />
 
-          <Panel position="top-center" className="bg-yellow-50 text-yellow-800 px-3 py-1 rounded text-xs opacity-90 pointer-events-none border border-yellow-200">
+          <Panel position="top-center" className="bg-amber-50 text-amber-800 px-3 py-1 rounded text-xs opacity-90 pointer-events-none border border-amber-200">
              💡 提示：点击连线变色后 → 按“删除选中”按钮
           </Panel>
 
