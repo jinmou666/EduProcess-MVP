@@ -1,5 +1,7 @@
 import json
 import os
+import socket
+import ssl
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -53,9 +55,13 @@ def get_llm_settings() -> Dict[str, Any]:
         "base_url": (os.getenv("LLM_BASE_URL") or os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1").rstrip("/"),
         "model_name": os.getenv("LLM_MODEL_NAME") or os.getenv("OPENAI_MODEL") or "gpt-4.1-mini",
         "fallback_models": _parse_model_list(os.getenv("LLM_FALLBACK_MODELS")),
-        "timeout_seconds": int(os.getenv("LLM_TIMEOUT_SECONDS", "60")),
+        "timeout_seconds": int(os.getenv("LLM_TIMEOUT_SECONDS", "90")),
         "temperature": float(os.getenv("LLM_TEMPERATURE", "0.1")),
     }
+
+
+# Network-level exceptions that should be treated as transient upstream failures
+_TRANSIENT_NETWORK_EXCEPTIONS = (socket.timeout, ConnectionError, ConnectionResetError, ssl.SSLError, OSError)
 
 
 def _post_json(url: str, headers: Dict[str, str], payload: Dict[str, Any], timeout_seconds: int) -> Dict[str, Any]:
@@ -92,7 +98,19 @@ def _post_json(url: str, headers: Dict[str, str], payload: Dict[str, Any], timeo
             error_code=error_code,
         ) from exc
     except error.URLError as exc:
-        raise LLMClientError(f"LLM request failed: {exc.reason}") from exc
+        # URLError (DNS failure, connection refused, etc.) → treat as 502 upstream
+        raise LLMClientError(
+            f"LLM request failed (URL error): {exc.reason}",
+            status_code=502,
+            error_code=None,
+        ) from exc
+    except _TRANSIENT_NETWORK_EXCEPTIONS as exc:
+        # socket.timeout, ConnectionError, etc. → treat as 504 upstream
+        raise LLMClientError(
+            f"LLM request failed (network error): {type(exc).__name__}: {exc}",
+            status_code=504,
+            error_code=None,
+        ) from exc
 
 
 def _extract_message_content(response_json: Dict[str, Any]) -> str:

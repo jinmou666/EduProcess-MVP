@@ -65,11 +65,15 @@ def is_local_scoring_mode() -> bool:
 
 def _is_demo_fallback_enabled() -> bool:
     env_value = _read_local_env_value("AUTHENTICITY_ENABLE_DEMO_FALLBACK")
-    return (env_value or "false").strip().lower() in {"1", "true", "yes", "on"}
+    return (env_value or "true").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def should_use_authenticity_fallback(exc: AuthenticityEvaluationError) -> bool:
-    return _is_demo_fallback_enabled() and exc.upstream_status_code in TRANSIENT_UPSTREAM_STATUS_CODES
+    if not _is_demo_fallback_enabled():
+        return False
+    if exc.upstream_status_code is None:
+        return True
+    return exc.upstream_status_code in TRANSIENT_UPSTREAM_STATUS_CODES
 
 
 def _is_llm_available() -> bool:

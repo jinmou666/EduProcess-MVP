@@ -118,7 +118,7 @@ def _extract_json_payload(raw_text: str) -> str:
 
 def _is_demo_fallback_enabled() -> bool:
     env_value = _read_local_env_value("CRITIQUE_ENABLE_DEMO_FALLBACK")
-    return (env_value or "false").strip().lower() in {"1", "true", "yes", "on"}
+    return (env_value or "true").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def is_local_scoring_mode() -> bool:
@@ -143,7 +143,11 @@ def _read_local_env_value(key_name: str) -> Optional[str]:
 
 
 def should_use_demo_fallback(exc: CritiqueEvaluationError) -> bool:
-    return _is_demo_fallback_enabled() and exc.upstream_status_code in TRANSIENT_UPSTREAM_STATUS_CODES
+    if not _is_demo_fallback_enabled():
+        return False
+    if exc.upstream_status_code is None:
+        return True
+    return exc.upstream_status_code in TRANSIENT_UPSTREAM_STATUS_CODES
 
 
 def _normalize_text(value: Any) -> str:
